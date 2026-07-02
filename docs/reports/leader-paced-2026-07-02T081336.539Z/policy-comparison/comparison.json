@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "title": "RPCEdge Paired Route Policy Comparison",
-  "generated_at": "2026-07-02T08:19:28.482540878Z",
+  "generated_at": "2026-07-02T10:00:00.992210911Z",
   "primary_source": "first_observed",
   "run_count": 3,
   "runs": [
     {
       "label": "RPCEdge QUIC Frankfurt 5m cost-aware / always_race",
       "test_id": "leader-paced-2026-07-02T081336.539Z",
-      "artifact_dir": "/home/sol/solana-tx-bench/artifacts/leader-paced-2026-07-02T081336.539Z",
+      "artifact_dir": "/home/polaris-pm/tx-relay-bench-artifacts/leader-paced-2026-07-02T081336.539Z",
       "route_policy": "always_race (181)",
       "routes": "tpu_quic+jito_bundle+harmonic_bundle (181)",
       "total_runs": 181,
@@ -52,7 +52,7 @@
     {
       "label": "RPCEdge QUIC Frankfurt 5m cost-aware / software_client_aware",
       "test_id": "leader-paced-2026-07-02T081336.539Z",
-      "artifact_dir": "/home/sol/solana-tx-bench/artifacts/leader-paced-2026-07-02T081336.539Z",
+      "artifact_dir": "/home/polaris-pm/tx-relay-bench-artifacts/leader-paced-2026-07-02T081336.539Z",
       "route_policy": "software_client_aware_harmonic (31), software_client_aware_jito (101), software_client_aware_jito_harmonic (13), software_client_aware_tpu_only (36)",
       "routes": "tpu_quic (36), tpu_quic+harmonic_bundle (31), tpu_quic+jito_bundle (101), tpu_quic+jito_bundle+harmonic_bundle (13)",
       "total_runs": 181,
@@ -96,7 +96,7 @@
     {
       "label": "RPCEdge QUIC Frankfurt 5m cost-aware / tpu_quic_only",
       "test_id": "leader-paced-2026-07-02T081336.539Z",
-      "artifact_dir": "/home/sol/solana-tx-bench/artifacts/leader-paced-2026-07-02T081336.539Z",
+      "artifact_dir": "/home/polaris-pm/tx-relay-bench-artifacts/leader-paced-2026-07-02T081336.539Z",
       "route_policy": "tpu_quic_only (181)",
       "routes": "tpu_quic (181)",
       "total_runs": 181,
@@ -139,6 +139,6 @@
     }
   ],
   "warnings": [
-    "Compared runs use different average priority fees. Treat this as exploratory; clean route-policy baselines must use the same compute-unit limit and compute-unit price in every arm."
+    "Compared runs use route-dependent priority fees. Treat this as a cost-aware route-strategy comparison, not a fee-neutral transport isolation run."
   ]
 }

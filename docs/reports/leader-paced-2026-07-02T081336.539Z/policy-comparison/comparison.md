@@ -1,6 +1,6 @@
 # RPCEdge Paired Route Policy Comparison
 
-- Generated: `2026-07-02T08:19:28.482Z`
+- Generated: `2026-07-02T10:00:00.992Z`
 - Primary landing source: `first_observed`
 - Runs: `3`
 
@@ -8,7 +8,7 @@
 
 Landing proof comes from matched observations by transaction signature, not provider ACK. By default, landing latency uses the first observed stream event for each caller transaction; processed metadata is still used for block position because deshred observations do not carry a transaction index. Cost columns separate deterministic transaction fees from route-added tips: base fee and priority fee are encoded in the signed transaction, generated route tips come from route-result ACK metadata, and landed route tips count only tip signatures observed in the matched streams. Lower-is-better metrics are normalized relative to the best run in the comparison set. Landing latency and landed slots weight p90 at 80% and average at 20%. Block position weights average and p90 equally. Same-slot and success use rates so runs with different counts remain comparable. The final performance rate is the unweighted average of the five bucket scores. Only compare runs with the same transaction shape, trigger mode, sender region, and fee/tip policy; otherwise treat the score as descriptive rather than a claim.
 
-> **Warning:** Compared runs use different average priority fees. Treat this as exploratory; clean route-policy baselines must use the same compute-unit limit and compute-unit price in every arm.
+> **Warning:** Compared runs use route-dependent priority fees. Treat this as a cost-aware route-strategy comparison, not a fee-neutral transport isolation run.
 
 ## Comparison
 

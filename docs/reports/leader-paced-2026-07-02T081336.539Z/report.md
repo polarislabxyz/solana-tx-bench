@@ -1,17 +1,18 @@
 # Transaction Landing Report: `leader-paced-2026-07-02T081336.539Z`
 
-- Generated: `2026-07-02T08:19:28.458Z`
-- Artifact dir: `/home/sol/solana-tx-bench/artifacts/leader-paced-2026-07-02T081336.539Z`
+- Generated: `2026-07-02T09:59:08.907Z`
+- Artifact dir: `/home/polaris-pm/tx-relay-bench-artifacts/leader-paced-2026-07-02T081336.539Z`
 - Sent transactions: `543`
 - Provider samples: `543`
 - Observations: `1160`
 - Matched caller signatures: `536`
+- Unobserved caller signatures: `7`
 - Matched route-tip signatures: `44`
 - Leader-slot snapshots: `9`
 
 This report is generated only from local benchmark artifacts. Leader metadata comes from saved `getLeaderSlots` snapshots captured during the run; no ClickHouse or private database join is required.
 
-> **Warning:** This artifact used mixed compute-unit prices. Treat it as exploratory; it is not a clean route-policy baseline. Current baselines must use the same compute-unit limit and compute-unit price for every policy arm.
+> **Warning:** This artifact used route-dependent priority fees. Treat it as a cost-aware route-strategy comparison, not a fee-neutral transport isolation run.
 
 ## Cost Summary
 
@@ -28,6 +29,20 @@ Landing latency uses the earliest observation per transaction across configured 
 | First source | Count | p50 ms | p90 ms | p99 ms | max ms | same-slot | slot delta p50 | slot index p50 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | `rpcedge_deshred` | 536 | 119.805 | 278.606 | 1649.936 | 3246.342 | 509 / 95.0% | 0 | - |
+
+## Unobserved Signatures
+
+These signatures were submitted by the benchmark but were not observed by the configured landing streams during the collection window. Treat them as the first investigation bucket for dropped transactions, late-beyond-tail transactions, or observation-path misses.
+
+| Signature | Arm | Routes | Send slot | Send leader | Send client | Provider ACK | Route ACKs | Total generated spend |
+| --- | --- | --- | ---: | --- | --- | --- | --- | ---: |
+| `4YAaBpDH...yqD84CEX` | `tpu_quic_only` | `tpu_quic` | 430268860 | `GYx8kpp7SsRwtQEEsGQjAxb4hFMMmT91kFJuDeky3YGQ (Tokyo)` | `HarmonicAgave` | accepted 1.381ms | `tpu_quic:ok:2us` | 5000 |
+| `4srVVJTc...3qdAYnfr` | `software_client_aware` | `tpu_quic+harmonic_bundle` | 430268860 | `GYx8kpp7SsRwtQEEsGQjAxb4hFMMmT91kFJuDeky3YGQ (Tokyo)` | `HarmonicAgave` | accepted 1.430ms | `tpu_quic:ok:3us | harmonic_bundle:ok:295us` | 5198 |
+| `t4yYWkZz...569NpUnY` | `tpu_quic_only` | `tpu_quic` | 430268888 | `Fc6NNdS2j3EmrWbU6Uqt6wsKB5ef72NjaWfNxKYbULGD (Asia/Singapore)` | `AgaveBam` | accepted 0.416ms | `tpu_quic:ok:10us` | 5000 |
+| `42TF5DLx...LSdjSE7D` | `tpu_quic_only` | `tpu_quic` | 430269080 | `Fc6NNdS2j3EmrWbU6Uqt6wsKB5ef72NjaWfNxKYbULGD (Asia/Singapore)` | `AgaveBam` | accepted 2.303ms | `tpu_quic:ok:4us` | 5000 |
+| `4QviUaXc...RZLjBBVt` | `tpu_quic_only` | `tpu_quic` | 430269304 | `8T8AJfUCXwPFwEMmjca8gCRSktPrqbUBVa6ggNyhLhFJ (Asia/Hong_Kong)` | `AgaveBam` | accepted 0.345ms | `tpu_quic:ok:11us` | 5000 |
+| `Pr6g4T4S...EwvQtHhx` | `tpu_quic_only` | `tpu_quic` | 430269348 | `Fc6NNdS2j3EmrWbU6Uqt6wsKB5ef72NjaWfNxKYbULGD (Asia/Singapore)` | `AgaveBam` | accepted 2.093ms | `tpu_quic:ok:2us` | 5000 |
+| `3551ESkH...eCJhExXX` | `tpu_quic_only` | `tpu_quic` | 430269376 | `Fc6NNdS2j3EmrWbU6Uqt6wsKB5ef72NjaWfNxKYbULGD (Asia/Singapore)` | `AgaveBam` | accepted 1.917ms | `tpu_quic:ok:5us` | 5000 |
 
 ## Cohort: `leader_region`
 

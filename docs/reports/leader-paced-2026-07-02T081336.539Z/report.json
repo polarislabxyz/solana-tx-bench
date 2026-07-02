@@ -1,13 +1,14 @@
 {
   "schema_version": 1,
   "test_id": "leader-paced-2026-07-02T081336.539Z",
-  "generated_at": "2026-07-02T08:19:28.458754926Z",
-  "artifact_dir": "/home/sol/solana-tx-bench/artifacts/leader-paced-2026-07-02T081336.539Z",
+  "generated_at": "2026-07-02T09:59:08.907978101Z",
+  "artifact_dir": "/home/polaris-pm/tx-relay-bench-artifacts/leader-paced-2026-07-02T081336.539Z",
   "totals": {
     "samples": 543,
     "sent_transactions": 543,
     "observations": 1160,
     "matched_signatures": 536,
+    "unobserved_signatures": 7,
     "matched_route_tip_signatures": 44,
     "leader_slot_snapshots": 9
   },
@@ -1841,7 +1842,312 @@
       "leader_client": "Rakurai"
     }
   ],
+  "unobserved_events": [
+    {
+      "signature": "4YAaBpDHzBtkRzdKEoqFAYhKD8ZJBBwupzAfAdDHG2L2EVZQDppe88LZc4wB4s3dqp5gu6srCzLshLqkyqD84CEX",
+      "policy_arm": "tpu_quic_only",
+      "route_policy": "tpu_quic_only",
+      "selected_routes": [
+        "tpu_quic"
+      ],
+      "comparison_group_id": "leader-paced-2026-07-02T081336.539Z:GYx8kpp7SsRwtQEEsGQjAxb4hFMMmT91kFJuDeky3YGQ:430268860:430268860:0",
+      "sent_at": "2026-07-02T08:13:56.135241698Z",
+      "send_slot": 430268860,
+      "leader_run_start_slot": 430268860,
+      "leader_run_end_slot": 430268863,
+      "trigger_source": "grpc_slot",
+      "slot_signal_status": "SLOT_FIRST_SHRED_RECEIVED",
+      "send_leader_identity": "GYx8kpp7SsRwtQEEsGQjAxb4hFMMmT91kFJuDeky3YGQ",
+      "send_leader_region": "AsiaPacific",
+      "send_leader_city": "Tokyo",
+      "send_leader_client": "HarmonicAgave",
+      "provider_name": "rpcedge-quic-frankfurt",
+      "provider_accepted": true,
+      "provider_ack_latency_us": 1381,
+      "provider_request_id": "leader-paced-2026-07-02T081336.539Z-rpcedge-quic-frankfurt-35",
+      "status_code": null,
+      "error_class": null,
+      "error": null,
+      "route_results_complete": true,
+      "route_results": [
+        {
+          "route": "tpu_quic",
+          "route_name": "yellowstone-tpu-frankfurt",
+          "provider": "yellowstone-tpu",
+          "accepted": true,
+          "latency_us": 2
+        }
+      ],
+      "compute_unit_price_microlamports": 0,
+      "base_fee_lamports": 5000,
+      "priority_fee_lamports": 0,
+      "transaction_fee_lamports": 5000,
+      "route_tip_generated_lamports": 0,
+      "total_generated_spend_lamports": 5000
+    },
+    {
+      "signature": "4srVVJTcvq44cRdU2tNjgd6aMpexnvrexKz4kNHg9JNuzVob3m949EcQxubSDa8VZp3ew9aCaN6SzSqQ3qdAYnfr",
+      "policy_arm": "software_client_aware",
+      "route_policy": "software_client_aware_harmonic",
+      "selected_routes": [
+        "tpu_quic",
+        "harmonic_bundle"
+      ],
+      "comparison_group_id": "leader-paced-2026-07-02T081336.539Z:GYx8kpp7SsRwtQEEsGQjAxb4hFMMmT91kFJuDeky3YGQ:430268860:430268860:0",
+      "sent_at": "2026-07-02T08:13:56.135241698Z",
+      "send_slot": 430268860,
+      "leader_run_start_slot": 430268860,
+      "leader_run_end_slot": 430268863,
+      "trigger_source": "grpc_slot",
+      "slot_signal_status": "SLOT_FIRST_SHRED_RECEIVED",
+      "send_leader_identity": "GYx8kpp7SsRwtQEEsGQjAxb4hFMMmT91kFJuDeky3YGQ",
+      "send_leader_region": "AsiaPacific",
+      "send_leader_city": "Tokyo",
+      "send_leader_client": "HarmonicAgave",
+      "provider_name": "rpcedge-quic-frankfurt",
+      "provider_accepted": true,
+      "provider_ack_latency_us": 1430,
+      "provider_request_id": "leader-paced-2026-07-02T081336.539Z-rpcedge-quic-frankfurt-34",
+      "status_code": null,
+      "error_class": null,
+      "error": null,
+      "route_results_complete": true,
+      "route_results": [
+        {
+          "route": "tpu_quic",
+          "route_name": "yellowstone-tpu-frankfurt",
+          "provider": "yellowstone-tpu",
+          "accepted": true,
+          "latency_us": 3
+        },
+        {
+          "route": "harmonic_bundle",
+          "route_name": "harmonic-frankfurt",
+          "provider": "harmonic-bundle",
+          "accepted": true,
+          "latency_us": 295,
+          "bundle_id": "5dd32eb22960930b"
+        }
+      ],
+      "compute_unit_price_microlamports": 300000,
+      "base_fee_lamports": 5000,
+      "priority_fee_lamports": 198,
+      "transaction_fee_lamports": 5198,
+      "route_tip_generated_lamports": 0,
+      "total_generated_spend_lamports": 5198
+    },
+    {
+      "signature": "t4yYWkZzCpCooFL8ZvsY9Je4NcruUobHEt1PZLq1cxRchgb3sX6woffh7cXheex2JdVj2H5FVhRTaxu569NpUnY",
+      "policy_arm": "tpu_quic_only",
+      "route_policy": "tpu_quic_only",
+      "selected_routes": [
+        "tpu_quic"
+      ],
+      "comparison_group_id": "leader-paced-2026-07-02T081336.539Z:Fc6NNdS2j3EmrWbU6Uqt6wsKB5ef72NjaWfNxKYbULGD:430268888:430268888:0",
+      "sent_at": "2026-07-02T08:14:07.552555002Z",
+      "send_slot": 430268888,
+      "leader_run_start_slot": 430268888,
+      "leader_run_end_slot": 430268891,
+      "trigger_source": "grpc_slot",
+      "slot_signal_status": "SLOT_FIRST_SHRED_RECEIVED",
+      "send_leader_identity": "Fc6NNdS2j3EmrWbU6Uqt6wsKB5ef72NjaWfNxKYbULGD",
+      "send_leader_region": "AsiaPacific",
+      "send_leader_city": "Asia/Singapore",
+      "send_leader_client": "AgaveBam",
+      "provider_name": "rpcedge-quic-frankfurt",
+      "provider_accepted": true,
+      "provider_ack_latency_us": 416,
+      "provider_request_id": "leader-paced-2026-07-02T081336.539Z-rpcedge-quic-frankfurt-55",
+      "status_code": null,
+      "error_class": null,
+      "error": null,
+      "route_results_complete": true,
+      "route_results": [
+        {
+          "route": "tpu_quic",
+          "route_name": "yellowstone-tpu-frankfurt",
+          "provider": "yellowstone-tpu",
+          "accepted": true,
+          "latency_us": 10
+        }
+      ],
+      "compute_unit_price_microlamports": 0,
+      "base_fee_lamports": 5000,
+      "priority_fee_lamports": 0,
+      "transaction_fee_lamports": 5000,
+      "route_tip_generated_lamports": 0,
+      "total_generated_spend_lamports": 5000
+    },
+    {
+      "signature": "42TF5DLxfEg5beYp1sYPa5UtUsyNxMaQQr3hrrQhXGzbYaMWHbxcsYvzKT6y3Nd5vz6bkWuD3NwNNadtLSdjSE7D",
+      "policy_arm": "tpu_quic_only",
+      "route_policy": "tpu_quic_only",
+      "selected_routes": [
+        "tpu_quic"
+      ],
+      "comparison_group_id": "leader-paced-2026-07-02T081336.539Z:Fc6NNdS2j3EmrWbU6Uqt6wsKB5ef72NjaWfNxKYbULGD:430269080:430269080:0",
+      "sent_at": "2026-07-02T08:15:22.918959517Z",
+      "send_slot": 430269080,
+      "leader_run_start_slot": 430269080,
+      "leader_run_end_slot": 430269083,
+      "trigger_source": "grpc_slot",
+      "slot_signal_status": "SLOT_FIRST_SHRED_RECEIVED",
+      "send_leader_identity": "Fc6NNdS2j3EmrWbU6Uqt6wsKB5ef72NjaWfNxKYbULGD",
+      "send_leader_region": "AsiaPacific",
+      "send_leader_city": "Asia/Singapore",
+      "send_leader_client": "AgaveBam",
+      "provider_name": "rpcedge-quic-frankfurt",
+      "provider_accepted": true,
+      "provider_ack_latency_us": 2303,
+      "provider_request_id": "leader-paced-2026-07-02T081336.539Z-rpcedge-quic-frankfurt-199",
+      "status_code": null,
+      "error_class": null,
+      "error": null,
+      "route_results_complete": true,
+      "route_results": [
+        {
+          "route": "tpu_quic",
+          "route_name": "yellowstone-tpu-frankfurt",
+          "provider": "yellowstone-tpu",
+          "accepted": true,
+          "latency_us": 4
+        }
+      ],
+      "compute_unit_price_microlamports": 0,
+      "base_fee_lamports": 5000,
+      "priority_fee_lamports": 0,
+      "transaction_fee_lamports": 5000,
+      "route_tip_generated_lamports": 0,
+      "total_generated_spend_lamports": 5000
+    },
+    {
+      "signature": "4QviUaXc2rDKnTVsyf5vDezqajifU2MCb9f6A1QydQmETo3occzsSXpf2b9C8CqtLjwEBmGY9tD9VdGiRZLjBBVt",
+      "policy_arm": "tpu_quic_only",
+      "route_policy": "tpu_quic_only",
+      "selected_routes": [
+        "tpu_quic"
+      ],
+      "comparison_group_id": "leader-paced-2026-07-02T081336.539Z:8T8AJfUCXwPFwEMmjca8gCRSktPrqbUBVa6ggNyhLhFJ:430269304:430269304:0",
+      "sent_at": "2026-07-02T08:16:53.970682123Z",
+      "send_slot": 430269304,
+      "leader_run_start_slot": 430269304,
+      "leader_run_end_slot": 430269307,
+      "trigger_source": "grpc_slot",
+      "slot_signal_status": "SLOT_FIRST_SHRED_RECEIVED",
+      "send_leader_identity": "8T8AJfUCXwPFwEMmjca8gCRSktPrqbUBVa6ggNyhLhFJ",
+      "send_leader_region": "AsiaPacific",
+      "send_leader_city": "Asia/Hong_Kong",
+      "send_leader_client": "AgaveBam",
+      "provider_name": "rpcedge-quic-frankfurt",
+      "provider_accepted": true,
+      "provider_ack_latency_us": 345,
+      "provider_request_id": "leader-paced-2026-07-02T081336.539Z-rpcedge-quic-frankfurt-356",
+      "status_code": null,
+      "error_class": null,
+      "error": null,
+      "route_results_complete": true,
+      "route_results": [
+        {
+          "route": "tpu_quic",
+          "route_name": "yellowstone-tpu-frankfurt",
+          "provider": "yellowstone-tpu",
+          "accepted": true,
+          "latency_us": 11
+        }
+      ],
+      "compute_unit_price_microlamports": 0,
+      "base_fee_lamports": 5000,
+      "priority_fee_lamports": 0,
+      "transaction_fee_lamports": 5000,
+      "route_tip_generated_lamports": 0,
+      "total_generated_spend_lamports": 5000
+    },
+    {
+      "signature": "Pr6g4T4ShtbngK9Wwe1WZE2TaxF9kcCETAHyUp45fE8Fv9y2rVfjc5Ast9B199NtbARiNvJDD8zoJNTEwvQtHhx",
+      "policy_arm": "tpu_quic_only",
+      "route_policy": "tpu_quic_only",
+      "selected_routes": [
+        "tpu_quic"
+      ],
+      "comparison_group_id": "leader-paced-2026-07-02T081336.539Z:Fc6NNdS2j3EmrWbU6Uqt6wsKB5ef72NjaWfNxKYbULGD:430269348:430269348:0",
+      "sent_at": "2026-07-02T08:17:13.032219328Z",
+      "send_slot": 430269348,
+      "leader_run_start_slot": 430269348,
+      "leader_run_end_slot": 430269351,
+      "trigger_source": "grpc_slot",
+      "slot_signal_status": "SLOT_FIRST_SHRED_RECEIVED",
+      "send_leader_identity": "Fc6NNdS2j3EmrWbU6Uqt6wsKB5ef72NjaWfNxKYbULGD",
+      "send_leader_region": "AsiaPacific",
+      "send_leader_city": "Asia/Singapore",
+      "send_leader_client": "AgaveBam",
+      "provider_name": "rpcedge-quic-frankfurt",
+      "provider_accepted": true,
+      "provider_ack_latency_us": 2093,
+      "provider_request_id": "leader-paced-2026-07-02T081336.539Z-rpcedge-quic-frankfurt-384",
+      "status_code": null,
+      "error_class": null,
+      "error": null,
+      "route_results_complete": true,
+      "route_results": [
+        {
+          "route": "tpu_quic",
+          "route_name": "yellowstone-tpu-frankfurt",
+          "provider": "yellowstone-tpu",
+          "accepted": true,
+          "latency_us": 2
+        }
+      ],
+      "compute_unit_price_microlamports": 0,
+      "base_fee_lamports": 5000,
+      "priority_fee_lamports": 0,
+      "transaction_fee_lamports": 5000,
+      "route_tip_generated_lamports": 0,
+      "total_generated_spend_lamports": 5000
+    },
+    {
+      "signature": "3551ESkHiefUAmBFZ7Bqp8PSjJp61mfVbuH5sB7qKkLNLuDWQbjf7Z4aU3aYBT3fLvcUiwd9aqwoQECMeCJhExXX",
+      "policy_arm": "tpu_quic_only",
+      "route_policy": "tpu_quic_only",
+      "selected_routes": [
+        "tpu_quic"
+      ],
+      "comparison_group_id": "leader-paced-2026-07-02T081336.539Z:Fc6NNdS2j3EmrWbU6Uqt6wsKB5ef72NjaWfNxKYbULGD:430269376:430269376:0",
+      "sent_at": "2026-07-02T08:17:24.578610964Z",
+      "send_slot": 430269376,
+      "leader_run_start_slot": 430269376,
+      "leader_run_end_slot": 430269379,
+      "trigger_source": "grpc_slot",
+      "slot_signal_status": "SLOT_FIRST_SHRED_RECEIVED",
+      "send_leader_identity": "Fc6NNdS2j3EmrWbU6Uqt6wsKB5ef72NjaWfNxKYbULGD",
+      "send_leader_region": "AsiaPacific",
+      "send_leader_city": "Asia/Singapore",
+      "send_leader_client": "AgaveBam",
+      "provider_name": "rpcedge-quic-frankfurt",
+      "provider_accepted": true,
+      "provider_ack_latency_us": 1917,
+      "provider_request_id": "leader-paced-2026-07-02T081336.539Z-rpcedge-quic-frankfurt-407",
+      "status_code": null,
+      "error_class": null,
+      "error": null,
+      "route_results_complete": true,
+      "route_results": [
+        {
+          "route": "tpu_quic",
+          "route_name": "yellowstone-tpu-frankfurt",
+          "provider": "yellowstone-tpu",
+          "accepted": true,
+          "latency_us": 5
+        }
+      ],
+      "compute_unit_price_microlamports": 0,
+      "base_fee_lamports": 5000,
+      "priority_fee_lamports": 0,
+      "transaction_fee_lamports": 5000,
+      "route_tip_generated_lamports": 0,
+      "total_generated_spend_lamports": 5000
+    }
+  ],
   "warnings": [
-    "This artifact used mixed compute-unit prices. Treat it as exploratory; it is not a clean route-policy baseline. Current baselines must use the same compute-unit limit and compute-unit price for every policy arm."
+    "This artifact used route-dependent priority fees. Treat it as a cost-aware route-strategy comparison, not a fee-neutral transport isolation run."
   ]
 }

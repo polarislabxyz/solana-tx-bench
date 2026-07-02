@@ -166,7 +166,7 @@ fn comparison_warnings(runs: &[RunComparisonSummary]) -> Vec<String> {
 
     if priority_fee_values.len() > 1 {
         warnings.push(
-            "Compared runs use different average priority fees. Treat this as exploratory; clean route-policy baselines must use the same compute-unit limit and compute-unit price in every arm.".to_string(),
+            "Compared runs use route-dependent priority fees. Treat this as a cost-aware route-strategy comparison, not a fee-neutral transport isolation run.".to_string(),
         );
     }
 
@@ -928,23 +928,28 @@ fn methodology_text() -> &'static str {
 fn comparison_html(output: &ComparisonOutput) -> String {
     let mut out = String::new();
     out.push_str("<!doctype html><html><head><meta charset=\"utf-8\">");
+    out.push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
     out.push_str(&format!("<title>{}</title>", html_escape(&output.title)));
     out.push_str(
         "<style>
-body{font-family:Inter,Arial,sans-serif;margin:0;background:#f7f8fa;color:#17202a;line-height:1.45}
-main{max-width:1380px;margin:0 auto;padding:32px}
-h1{font-size:28px;margin:0 0 6px} h2{font-size:19px;margin:28px 0 10px}
-.muted{color:#5d6975}.note{background:#fff;border-left:4px solid #4b7bec;padding:12px 14px;margin:16px 0;max-width:1100px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:18px 0}
-.card{background:#fff;border:1px solid #e3e7ec;border-radius:8px;padding:14px}.card b{display:block;font-size:24px}
-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e3e7ec;border-radius:8px;overflow:hidden}
-th,td{padding:8px 10px;border-bottom:1px solid #edf0f3;text-align:right;font-size:13px;vertical-align:top}
-th:first-child,td:first-child,td.left{text-align:left}th{background:#f0f3f6;color:#44505c;font-weight:600}
-code{background:#eef1f4;padding:1px 4px;border-radius:4px}.nowrap{white-space:nowrap}
+*{box-sizing:border-box}
+body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:#f5f7f8;color:#17202a;line-height:1.45}
+main{max-width:1380px;margin:0 auto;padding:28px}
+a{color:#1769aa}.hero,.section{background:#fff;border:1px solid #dfe5e8;border-radius:8px;padding:20px;margin-bottom:16px}
+.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#667681;font-weight:700}
+h1{font-size:30px;line-height:1.08;margin:6px 0 8px;letter-spacing:0} h2{font-size:18px;margin:26px 0 10px;letter-spacing:0}
+.muted{color:#667681}.note{background:#f8fbfc;border-left:4px solid #2f7dbd;padding:11px 13px;margin:12px 0;max-width:1180px;color:#465760}.warning{border-left-color:#d18800;background:#fff8e8}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:18px 0 0}
+.card{background:#fbfcfd;border:1px solid #e1e7ea;border-radius:8px;padding:12px;min-height:82px}.card span{display:block;color:#667681;font-size:12px}.card b{display:block;font-size:24px;line-height:1.15;margin-top:4px}.card small{display:block;color:#72818a;margin-top:4px}
+.table-wrap{overflow-x:auto;border:1px solid #e2e8eb;border-radius:8px;background:#fff}table{width:100%;border-collapse:collapse;min-width:1120px}
+th,td{padding:8px 10px;border-bottom:1px solid #edf1f3;text-align:right;font-size:13px;vertical-align:top;white-space:nowrap}
+th:first-child,td:first-child,td.left{text-align:left}th{background:#f0f4f6;color:#41515b;font-weight:700}
+code{background:#eef2f4;padding:1px 5px;border-radius:4px}.pill{display:inline-flex;align-items:center;border:1px solid #d9e1e5;background:#f7fafb;border-radius:999px;padding:3px 8px;font-size:12px;color:#465760}.links{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+@media(max-width:720px){main{padding:14px}.hero,.section{padding:16px}h1{font-size:24px}}
 </style></head><body><main>",
     );
     out.push_str(&format!(
-        "<h1>{}</h1><div class=\"muted\">Generated: <code>{}</code> · Primary source: <code>{}</code></div>",
+        "<section class=\"hero\"><div class=\"eyebrow\">RPCEdge route policy comparison</div><h1>{}</h1><p class=\"muted\">Paired leader-paced policy arms scored by matched landing observations. First-observed latency is the primary timing metric; processed metadata supplies block position.</p><div class=\"links\"><span class=\"pill\">generated <code>{}</code></span><span class=\"pill\">primary source <code>{}</code></span><a class=\"pill\" href=\"../\">Full landing report</a></div>",
         html_escape(&output.title),
         html_escape(&output.generated_at.to_rfc3339_opts(SecondsFormat::Millis, true)),
         html_escape(&output.primary_source),
@@ -956,7 +961,7 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.nowrap{white-space:no
         .max_by(|a, b| a.performance_rate_pct.total_cmp(&b.performance_rate_pct))
     {
         out.push_str(&format!(
-            "<div class=\"card\"><span class=\"muted\">Best score</span><b>{:.2}%</b><span>{}</span></div>",
+            "<div class=\"card\"><span>Best score</span><b>{:.2}%</b><small>{}</small></div>",
             best.performance_rate_pct,
             html_escape(&best.label)
         ));
@@ -983,24 +988,26 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.nowrap{white-space:no
         ),
     ] {
         out.push_str(&format!(
-            "<div class=\"card\"><span class=\"muted\">{}</span><b>{}</b></div>",
+            "<div class=\"card\"><span>{}</span><b>{}</b></div>",
             html_escape(label),
             html_escape(&value)
         ));
     }
-    out.push_str("</div>");
+    out.push_str("</div></section>");
+    out.push_str("<section class=\"section\"><h2>Methodology</h2>");
     out.push_str(&format!(
         "<div class=\"note\">{}</div>",
         html_escape(methodology_text())
     ));
     for warning in &output.warnings {
         out.push_str(&format!(
-            "<div class=\"note\"><b>Warning:</b> {}</div>",
+            "<div class=\"note warning\"><b>Warning:</b> {}</div>",
             html_escape(warning)
         ));
     }
+    out.push_str("</section>");
 
-    out.push_str("<h2>Comparison</h2><table><thead><tr><th>Run</th><th>Routes</th><th>Avg First-Observed ms</th><th>P90 First-Observed ms</th><th>Avg Landed slots</th><th>P90 Landed slots</th><th>Avg Idx</th><th>P90 Idx</th><th>Avg Base Fee</th><th>Avg Priority Fee</th><th>Avg Tx Fee</th><th>Avg Route Tip Generated</th><th>Avg Route Tip Landed</th><th>Avg Total Generated</th><th>Avg Total Landed</th><th>Max Slots</th><th>Min Slots</th><th>Same-slot</th><th>Landed</th><th>Block seen</th><th>Total</th><th>Success %</th><th>Score %</th></tr></thead><tbody>");
+    out.push_str("<section class=\"section\"><h2>Comparison</h2><div class=\"table-wrap\"><table><thead><tr><th>Run</th><th>Routes</th><th>Avg First-Observed ms</th><th>P90 First-Observed ms</th><th>Avg Landed slots</th><th>P90 Landed slots</th><th>Avg Idx</th><th>P90 Idx</th><th>Avg Base Fee</th><th>Avg Priority Fee</th><th>Avg Tx Fee</th><th>Avg Route Tip Generated</th><th>Avg Route Tip Landed</th><th>Avg Total Generated</th><th>Avg Total Landed</th><th>Max Slots</th><th>Min Slots</th><th>Same-slot</th><th>Landed</th><th>Block seen</th><th>Total</th><th>Success %</th><th>Score %</th></tr></thead><tbody>");
     for run in &output.runs {
         out.push_str(&format!(
             "<tr><td class=\"left\"><code>{}</code></td><td class=\"left\"><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{:.2}</td><td><b>{:.2}</b></td></tr>",
@@ -1029,9 +1036,9 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.nowrap{white-space:no
             run.performance_rate_pct,
         ));
     }
-    out.push_str("</tbody></table>");
+    out.push_str("</tbody></table></div></section>");
 
-    out.push_str("<h2>Score Components</h2><table><thead><tr><th>Run</th><th>Landed ms</th><th>Landed slots</th><th>Block index</th><th>Same-slot</th><th>Success</th><th>Final</th></tr></thead><tbody>");
+    out.push_str("<section class=\"section\"><h2>Score Components</h2><div class=\"table-wrap\"><table><thead><tr><th>Run</th><th>Landed ms</th><th>Landed slots</th><th>Block index</th><th>Same-slot</th><th>Success</th><th>Final</th></tr></thead><tbody>");
     for run in &output.runs {
         out.push_str(&format!(
             "<tr><td class=\"left\"><code>{}</code></td><td>{:.2}</td><td>{:.2}</td><td>{:.2}</td><td>{:.2}</td><td>{:.2}</td><td><b>{:.2}</b></td></tr>",
@@ -1044,7 +1051,7 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.nowrap{white-space:no
             run.performance_rate_pct,
         ));
     }
-    out.push_str("</tbody></table>");
+    out.push_str("</tbody></table></div></section>");
     out.push_str("</main></body></html>");
     out
 }

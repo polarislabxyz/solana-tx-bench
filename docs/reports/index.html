@@ -14,8 +14,9 @@
   <h1>solana-tx-bench reports</h1>
   <p class="note">
     Static reports published from reviewed benchmark artifacts. Provider ACK
-    latency is diagnostic only; landing evidence comes from processed/deshred
-    observations matched by transaction signature.
+    latency is diagnostic only; landing evidence uses the first matched stream
+    observation by transaction signature. Processed metadata is used for block
+    position when available.
   </p>
   <ul>
     <li>
@@ -24,7 +25,9 @@
       </a>
       <br>
       <span class="note">
-        Includes <a href="./leader-paced-2026-07-02T081336.539Z/policy-comparison/">policy comparison</a>.
+        Includes <a href="./leader-paced-2026-07-02T081336.539Z/policy-comparison/">policy comparison</a>,
+        <a href="./leader-paced-2026-07-02T081336.539Z/tails.html">tail events</a>,
+        and <a href="./leader-paced-2026-07-02T081336.539Z/unobserved.html">unobserved signatures</a>.
         Harmonic-selected transactions were signed with the minimum
         300,000 micro-lamports/CU required by Harmonic. This is a smoke report,
         not the final 1h authoritative benchmark.

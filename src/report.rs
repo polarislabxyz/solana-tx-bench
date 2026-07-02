@@ -25,6 +25,7 @@ pub struct ReportOutput {
     pub cost_summary: CostReportSummary,
     pub cohort_summaries: Vec<CohortReportSummary>,
     pub tail_events: Vec<TailEvent>,
+    pub unobserved_events: Vec<UnobservedEvent>,
     pub warnings: Vec<String>,
 }
 
@@ -34,6 +35,7 @@ pub struct ReportTotals {
     pub sent_transactions: usize,
     pub observations: usize,
     pub matched_signatures: usize,
+    pub unobserved_signatures: usize,
     pub matched_route_tip_signatures: usize,
     pub leader_slot_snapshots: usize,
 }
@@ -139,6 +141,40 @@ pub struct TailEvent {
     pub leader_client: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnobservedEvent {
+    pub signature: String,
+    pub policy_arm: Option<String>,
+    pub route_policy: Option<String>,
+    pub selected_routes: Vec<String>,
+    pub comparison_group_id: Option<String>,
+    pub sent_at: DateTime<Utc>,
+    pub send_slot: u64,
+    pub leader_run_start_slot: u64,
+    pub leader_run_end_slot: u64,
+    pub trigger_source: String,
+    pub slot_signal_status: Option<String>,
+    pub send_leader_identity: String,
+    pub send_leader_region: String,
+    pub send_leader_city: String,
+    pub send_leader_client: String,
+    pub provider_name: Option<String>,
+    pub provider_accepted: Option<bool>,
+    pub provider_ack_latency_us: Option<u128>,
+    pub provider_request_id: Option<String>,
+    pub status_code: Option<u16>,
+    pub error_class: Option<String>,
+    pub error: Option<String>,
+    pub route_results_complete: Option<bool>,
+    pub route_results: Vec<crate::adapters::RouteResultAck>,
+    pub compute_unit_price_microlamports: Option<u64>,
+    pub base_fee_lamports: Option<u64>,
+    pub priority_fee_lamports: Option<u64>,
+    pub transaction_fee_lamports: Option<u64>,
+    pub route_tip_generated_lamports: Option<u64>,
+    pub total_generated_spend_lamports: Option<u64>,
+}
+
 #[derive(Debug, Clone, Default)]
 struct LeaderMeta {
     identity: String,
@@ -200,6 +236,10 @@ pub fn generate_report(artifact_dir: &Path) -> Result<ReportOutput> {
         .filter(|event| is_route_tip_observation(event))
         .cloned()
         .collect::<Vec<_>>();
+    let caller_observed_signatures = caller_observations
+        .iter()
+        .map(|event| event.signature.clone())
+        .collect::<BTreeSet<_>>();
     let observed_signatures = observations
         .iter()
         .map(|event| event.signature.clone())
@@ -260,12 +300,11 @@ pub fn generate_report(artifact_dir: &Path) -> Result<ReportOutput> {
             samples: samples.len(),
             sent_transactions: sends.len(),
             observations: observations.len(),
-            matched_signatures: observations
+            matched_signatures: caller_observed_signatures.len(),
+            unobserved_signatures: sends
                 .iter()
-                .filter(|event| !is_route_tip_observation(event))
-                .map(|event| event.signature.as_str())
-                .collect::<std::collections::BTreeSet<_>>()
-                .len(),
+                .filter(|send| !caller_observed_signatures.contains(&send.signature))
+                .count(),
             matched_route_tip_signatures: route_tip_observations
                 .iter()
                 .map(|event| event.signature.as_str())
@@ -285,6 +324,13 @@ pub fn generate_report(artifact_dir: &Path) -> Result<ReportOutput> {
             &leader_by_slot,
             12,
         ),
+        unobserved_events: summarize_unobserved_events(
+            &sends,
+            &sample_by_signature,
+            &caller_observed_signatures,
+            &cost_by_signature,
+            &leader_by_slot,
+        ),
         warnings: report_warnings(&samples, &sends),
     };
 
@@ -298,6 +344,7 @@ pub fn generate_report(artifact_dir: &Path) -> Result<ReportOutput> {
     fs::write(artifact_dir.join("report.html"), report_html(&report))
         .with_context(|| format!("write {}", artifact_dir.join("report.html").display()))?;
     write_tail_artifacts(artifact_dir, &report.tail_events)?;
+    write_unobserved_artifacts(artifact_dir, &report.unobserved_events)?;
 
     Ok(report)
 }
@@ -315,7 +362,7 @@ fn report_warnings(samples: &[BenchSample], sends: &[LeaderSendEvent]) -> Vec<St
 
     if send_cu_prices.len() > 1 || sample_cu_prices.len() > 1 {
         warnings.push(
-            "This artifact used mixed compute-unit prices. Treat it as exploratory; it is not a clean route-policy baseline. Current baselines must use the same compute-unit limit and compute-unit price for every policy arm.".to_string(),
+            "This artifact used route-dependent priority fees. Treat it as a cost-aware route-strategy comparison, not a fee-neutral transport isolation run.".to_string(),
         );
     }
 
@@ -964,6 +1011,78 @@ fn summarize_tail_events(
         .collect()
 }
 
+fn summarize_unobserved_events(
+    sends: &[LeaderSendEvent],
+    sample_by_signature: &BTreeMap<String, BenchSample>,
+    caller_observed_signatures: &BTreeSet<String>,
+    cost_by_signature: &BTreeMap<String, CostRow>,
+    leader_by_slot: &BTreeMap<u64, LeaderMeta>,
+) -> Vec<UnobservedEvent> {
+    let mut out = sends
+        .iter()
+        .filter(|send| !caller_observed_signatures.contains(&send.signature))
+        .map(|send| {
+            let sample = sample_by_signature.get(&send.signature);
+            let send_leader = send_leader_meta(Some(send), leader_by_slot);
+            let cost = cost_by_signature.get(&send.signature);
+            let policy_arm = sample
+                .and_then(|sample| sample.policy_arm.clone())
+                .or_else(|| send.policy_arm.clone());
+            let route_policy = sample
+                .and_then(|sample| sample.route_policy.clone())
+                .or_else(|| send.route_policy.clone());
+            let selected_routes = sample
+                .map(|sample| sample.selected_routes.clone())
+                .filter(|routes| !routes.is_empty())
+                .unwrap_or_else(|| send.selected_routes.clone());
+            let comparison_group_id = sample
+                .and_then(|sample| sample.comparison_group_id.clone())
+                .or_else(|| send.comparison_group_id.clone());
+            let compute_unit_price_microlamports = sample
+                .map(|sample| sample.compute_unit_price_microlamports)
+                .or(Some(send.compute_unit_price_microlamports));
+
+            UnobservedEvent {
+                signature: send.signature.clone(),
+                policy_arm,
+                route_policy,
+                selected_routes,
+                comparison_group_id,
+                sent_at: send.sent_at,
+                send_slot: send.send_slot,
+                leader_run_start_slot: send.leader_run_start_slot,
+                leader_run_end_slot: send.leader_run_end_slot,
+                trigger_source: send.trigger_source.clone(),
+                slot_signal_status: send.slot_signal_status.clone(),
+                send_leader_identity: send_leader.identity,
+                send_leader_region: send_leader.region,
+                send_leader_city: send_leader.city,
+                send_leader_client: send_leader.client_software,
+                provider_name: sample.map(|sample| sample.provider_name.clone()),
+                provider_accepted: sample.map(|sample| sample.accepted),
+                provider_ack_latency_us: sample.map(|sample| sample.provider_ack_latency_us),
+                provider_request_id: sample.and_then(|sample| sample.provider_request_id.clone()),
+                status_code: sample.and_then(|sample| sample.status_code),
+                error_class: sample.and_then(|sample| sample.error_class.clone()),
+                error: sample.and_then(|sample| sample.error.clone()),
+                route_results_complete: sample.and_then(|sample| sample.route_results_complete),
+                route_results: sample
+                    .map(|sample| sample.route_results.clone())
+                    .unwrap_or_default(),
+                compute_unit_price_microlamports,
+                base_fee_lamports: cost.map(|cost| cost.base_fee_lamports),
+                priority_fee_lamports: cost.map(|cost| cost.priority_fee_lamports),
+                transaction_fee_lamports: cost.map(|cost| cost.transaction_fee_lamports),
+                route_tip_generated_lamports: cost.map(|cost| cost.route_tip_generated_lamports),
+                total_generated_spend_lamports: cost
+                    .map(|cost| cost.total_generated_spend_lamports),
+            }
+        })
+        .collect::<Vec<_>>();
+    out.sort_by_key(|event| (event.send_slot, event.sent_at, event.signature.clone()));
+    out
+}
+
 fn send_leader_meta(
     send: Option<&LeaderSendEvent>,
     leader_by_slot: &BTreeMap<u64, LeaderMeta>,
@@ -1037,13 +1156,14 @@ fn report_markdown(report: &ReportOutput) -> String {
         report.test_id
     ));
     out.push_str(&format!(
-        "- Generated: `{}`\n- Artifact dir: `{}`\n- Sent transactions: `{}`\n- Provider samples: `{}`\n- Observations: `{}`\n- Matched caller signatures: `{}`\n- Matched route-tip signatures: `{}`\n- Leader-slot snapshots: `{}`\n\n",
+        "- Generated: `{}`\n- Artifact dir: `{}`\n- Sent transactions: `{}`\n- Provider samples: `{}`\n- Observations: `{}`\n- Matched caller signatures: `{}`\n- Unobserved caller signatures: `{}`\n- Matched route-tip signatures: `{}`\n- Leader-slot snapshots: `{}`\n\n",
         report.generated_at.to_rfc3339_opts(SecondsFormat::Millis, true),
         report.artifact_dir,
         report.totals.sent_transactions,
         report.totals.samples,
         report.totals.observations,
         report.totals.matched_signatures,
+        report.totals.unobserved_signatures,
         report.totals.matched_route_tip_signatures,
         report.totals.leader_slot_snapshots,
     ));
@@ -1088,6 +1208,25 @@ fn report_markdown(report: &ReportOutput) -> String {
             row.same_slot_rate * 100.0,
             fmt_i64(row.landed_slot_delta_p50),
             fmt_u64(row.slot_index_p50),
+        ));
+    }
+
+    out.push_str("\n## Unobserved Signatures\n\n");
+    out.push_str("These signatures were submitted by the benchmark but were not observed by the configured landing streams during the collection window. Treat them as the first investigation bucket for dropped transactions, late-beyond-tail transactions, or observation-path misses.\n\n");
+    out.push_str("| Signature | Arm | Routes | Send slot | Send leader | Send client | Provider ACK | Route ACKs | Total generated spend |\n");
+    out.push_str("| --- | --- | --- | ---: | --- | --- | --- | --- | ---: |\n");
+    for row in report.unobserved_events.iter().take(24) {
+        out.push_str(&format!(
+            "| `{}` | `{}` | `{}` | {} | `{}` | `{}` | {} | `{}` | {} |\n",
+            short_sig(&row.signature),
+            row.policy_arm.as_deref().unwrap_or("-"),
+            row.selected_routes.join("+"),
+            row.send_slot,
+            leader_label(&row.send_leader_identity, &row.send_leader_city),
+            row.send_leader_client,
+            provider_ack_label(row.provider_accepted, row.provider_ack_latency_us),
+            route_results_summary(&row.route_results),
+            fmt_u64(row.total_generated_spend_lamports),
         ));
     }
 
@@ -1170,65 +1309,130 @@ fn report_markdown(report: &ReportOutput) -> String {
 
 fn report_html(report: &ReportOutput) -> String {
     let mut out = String::new();
+    let primary = primary_source_summary(report);
+    let observed_ratio = ratio(
+        report.totals.matched_signatures,
+        report.totals.sent_transactions,
+    ) * 100.0;
+    let avg_landed_spend = fmt_f64(report.cost_summary.avg_total_landed_spend_lamports);
+
     out.push_str("<!doctype html><html><head><meta charset=\"utf-8\">");
+    out.push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
     out.push_str(&format!(
-        "<title>Transaction Landing Report: {}</title>",
+        "<title>RPCEdge Transaction Landing Benchmark: {}</title>",
         html_escape(&report.test_id)
     ));
     out.push_str(
         "<style>
-body{font-family:Inter,Arial,sans-serif;margin:0;background:#f7f8fa;color:#17202a;line-height:1.45}
-main{max-width:1180px;margin:0 auto;padding:32px}
-h1{font-size:26px;margin:0 0 6px} h2{font-size:18px;margin:28px 0 10px}
-.muted{color:#5d6975}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;margin:18px 0}
-.stat{background:#fff;border:1px solid #e3e7ec;border-radius:8px;padding:12px}.stat b{display:block;font-size:20px}
-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e3e7ec;border-radius:8px;overflow:hidden}
-th,td{padding:8px 10px;border-bottom:1px solid #edf0f3;text-align:right;font-size:13px}
-th:first-child,td:first-child,td.left{text-align:left}th{background:#f0f3f6;color:#44505c;font-weight:600}
-code{background:#eef1f4;padding:1px 4px;border-radius:4px}.note{background:#fff;border-left:4px solid #4b7bec;padding:10px 12px;margin:14px 0}
+*{box-sizing:border-box}
+body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:#f5f7f8;color:#17202a;line-height:1.45}
+main{max-width:1280px;margin:0 auto;padding:28px}
+a{color:#1769aa}.hero{background:#fff;border:1px solid #dfe5e8;border-radius:8px;padding:24px;margin-bottom:18px}
+.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#667681;font-weight:700}
+h1{font-size:30px;line-height:1.08;margin:6px 0 8px;letter-spacing:0}h2{font-size:18px;margin:28px 0 10px;letter-spacing:0}
+.subtitle{max-width:860px;color:#53636e;margin:0}.muted{color:#667681}.mono,code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+code{background:#eef2f4;padding:1px 5px;border-radius:4px}.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid #d9e1e5;background:#f7fafb;border-radius:999px;padding:3px 8px;font-size:12px;color:#465760}
+.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:18px}
+.metric{background:#fbfcfd;border:1px solid #e1e7ea;border-radius:8px;padding:12px;min-height:82px}.metric span{display:block;color:#667681;font-size:12px}.metric b{display:block;font-size:24px;line-height:1.15;margin-top:4px}.metric small{display:block;color:#72818a;margin-top:4px}
+.section{background:#fff;border:1px solid #dfe5e8;border-radius:8px;padding:18px;margin:16px 0}.section h2:first-child{margin-top:0}
+.note{background:#f8fbfc;border-left:4px solid #2f7dbd;padding:11px 13px;margin:12px 0;color:#465760}.warning{border-left-color:#d18800;background:#fff8e8}
+.method-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}.method-card{border:1px solid #e2e8eb;border-radius:8px;padding:12px;background:#fbfcfd}.method-card b{display:block;margin-bottom:4px}
+.table-wrap{overflow-x:auto;border:1px solid #e2e8eb;border-radius:8px;background:#fff}table{width:100%;border-collapse:collapse;min-width:900px}
+th,td{padding:8px 10px;border-bottom:1px solid #edf1f3;text-align:right;font-size:13px;vertical-align:top;white-space:nowrap}
+th:first-child,td:first-child,td.left{text-align:left}th{background:#f0f4f6;color:#41515b;font-weight:700}.sig{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+details{background:#fff;border:1px solid #dfe5e8;border-radius:8px;padding:14px;margin-top:16px}summary{cursor:pointer}.links{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+@media(max-width:720px){main{padding:14px}.hero{padding:18px}h1{font-size:24px}.metric b{font-size:21px}}
 </style></head><body><main>",
     );
     out.push_str(&format!(
-        "<h1>Transaction Landing Report</h1><div class=\"muted\"><code>{}</code><br>Generated: <code>{}</code></div>",
+        "<section class=\"hero\"><div class=\"eyebrow\">RPCEdge transaction landing benchmark</div><h1>{}</h1><p class=\"subtitle\">Leader-paced mainnet transactions submitted through <span class=\"mono\">rpcedge-quic-frankfurt</span>. Landing proof is matched by transaction signature. The primary latency clock is the earliest observed stream event; processed metadata is used for block position.</p><div class=\"links\"><span class=\"pill\">artifact <code>{}</code></span><span class=\"pill\">generated <code>{}</code></span><a class=\"pill\" href=\"./policy-comparison/\">Policy comparison</a><a class=\"pill\" href=\"tails.html\">Tail events</a><a class=\"pill\" href=\"unobserved.html\">Unobserved</a></div>",
+        html_escape(&report.test_id),
         html_escape(&report.test_id),
         html_escape(&report.generated_at.to_rfc3339_opts(SecondsFormat::Millis, true)),
     ));
-    out.push_str("<div class=\"grid\">");
-    for (label, value) in [
-        ("Sent", report.totals.sent_transactions.to_string()),
-        ("Provider Samples", report.totals.samples.to_string()),
-        ("Observations", report.totals.observations.to_string()),
+    out.push_str("<div class=\"summary-grid\">");
+    for (label, value, help) in [
         (
-            "Matched Caller Sigs",
-            report.totals.matched_signatures.to_string(),
+            "Observed caller signatures",
+            format!(
+                "{} / {}",
+                report.totals.matched_signatures, report.totals.sent_transactions
+            ),
+            format!("{observed_ratio:.2}% matched"),
         ),
         (
-            "Matched Tip Sigs",
+            "First-observed p50",
+            fmt_ms(primary.and_then(|row| row.submit_to_observed_p50_ms)),
+            primary
+                .map(|row| row.source_name.clone())
+                .unwrap_or_else(|| "no matched observations".to_string()),
+        ),
+        (
+            "First-observed p90",
+            fmt_ms(primary.and_then(|row| row.submit_to_observed_p90_ms)),
+            "tail-weighted landing clock".to_string(),
+        ),
+        (
+            "First-observed p99",
+            fmt_ms(primary.and_then(|row| row.submit_to_observed_p99_ms)),
+            "tail inspection starts here".to_string(),
+        ),
+        (
+            "Unobserved signatures",
+            report.totals.unobserved_signatures.to_string(),
+            "submitted but not found in landing streams".to_string(),
+        ),
+        (
+            "Same-slot observed",
+            primary
+                .map(|row| {
+                    format!(
+                        "{} / {:.1}%",
+                        row.same_slot_count,
+                        row.same_slot_rate * 100.0
+                    )
+                })
+                .unwrap_or_else(|| "-".to_string()),
+            "landed in sender-observed slot".to_string(),
+        ),
+        (
+            "Landed slot delta p90",
+            fmt_i64(primary.and_then(|row| row.landed_slot_delta_p90)),
+            "landed slot minus send slot".to_string(),
+        ),
+        (
+            "Avg landed spend",
+            avg_landed_spend,
+            "base + priority + observed route tip".to_string(),
+        ),
+        (
+            "Route-tip sigs observed",
             report.totals.matched_route_tip_signatures.to_string(),
-        ),
-        (
-            "Leader Snapshots",
-            report.totals.leader_slot_snapshots.to_string(),
+            "only observed tips count as spend".to_string(),
         ),
     ] {
         out.push_str(&format!(
-            "<div class=\"stat\"><span class=\"muted\">{}</span><b>{}</b></div>",
+            "<div class=\"metric\"><span>{}</span><b>{}</b><small>{}</small></div>",
             html_escape(label),
-            html_escape(&value)
+            html_escape(&value),
+            html_escape(&help),
         ));
     }
-    out.push_str("</div>");
-    out.push_str("<div class=\"note\">Generated only from local benchmark artifacts. Leader metadata comes from saved <code>getLeaderSlots</code> snapshots captured during the run; no ClickHouse or private database join is required.</div>");
+    out.push_str("</div></section>");
+
+    out.push_str("<section class=\"section\"><h2>Methodology</h2><div class=\"method-grid\"><div class=\"method-card\"><b>What was sent</b><span class=\"muted\">Memo-free self-transfer with compute budget instructions. Fees and route tips are read from signed transaction metadata and observed route-tip signatures.</span></div><div class=\"method-card\"><b>Landing clock</b><span class=\"muted\">Latency uses the first matched observation across configured streams. Usually this is SubscribeDeshred; processed is used when it is first or only.</span></div><div class=\"method-card\"><b>Block position</b><span class=\"muted\">Transaction index comes from Yellowstone processed metadata, because deshred observations normally do not carry canonical block index.</span></div><div class=\"method-card\"><b>What ACK means</b><span class=\"muted\">ACK is retained only as a sender diagnostic. It is not leader admission, not landing proof, and not used as the product latency claim.</span></div></div><div class=\"note\">Generated only from local benchmark artifacts. Leader metadata comes from saved <code>getLeaderSlots</code> snapshots captured during the run; no ClickHouse or private database join is required.</div>");
     for warning in &report.warnings {
         out.push_str(&format!(
-            "<div class=\"note\"><b>Warning:</b> {}</div>",
+            "<div class=\"note warning\"><b>Warning:</b> {}</div>",
             html_escape(warning)
         ));
     }
+    out.push_str("</section>");
 
+    out.push_str("<section class=\"section\">");
     let cost = &report.cost_summary;
     out.push_str("<h2>Cost Summary</h2><p class=\"muted\">Base and priority fees come from the signed caller transaction. Route-tip generated spend comes from route-result ACKs. Route-tip landed spend counts only route-tip signatures observed by the matched streams.</p>");
-    out.push_str("<table><thead><tr><th>Submitted txs</th><th>Avg base fee</th><th>Avg priority fee</th><th>Avg tx fee</th><th>Avg route tip generated</th><th>Avg route tip landed</th><th>Avg total generated</th><th>Avg total landed</th><th>Generated tip txs</th><th>Landed tip txs</th></tr></thead><tbody>");
+    out.push_str("<div class=\"table-wrap\"><table><thead><tr><th>Submitted txs</th><th>Avg base fee</th><th>Avg priority fee</th><th>Avg tx fee</th><th>Avg route tip generated</th><th>Avg route tip landed</th><th>Avg total generated</th><th>Avg total landed</th><th>Generated tip txs</th><th>Landed tip txs</th></tr></thead><tbody>");
     out.push_str(&format!(
         "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
         cost.submitted_transactions,
@@ -1242,13 +1446,13 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.note{background:#fff;
         cost.generated_route_tip_count,
         cost.landed_route_tip_count,
     ));
-    out.push_str("</tbody></table>");
+    out.push_str("</tbody></table></div></section>");
 
-    out.push_str("<h2>Landing Observations</h2><p class=\"muted\">Landing latency uses the earliest observation per transaction across configured streams. In normal RPCEdge runs this should be the deshred stream; processed metadata is only counted here when it is the first or only observation for a signature.</p>");
-    out.push_str("<table><thead><tr><th>First source</th><th>Count</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>max ms</th><th>same-slot</th><th>slot delta p50</th><th>slot index p50</th></tr></thead><tbody>");
+    out.push_str("<section class=\"section\"><h2>Landing Observations</h2><p class=\"muted\">Landing latency uses the earliest observation per transaction across configured streams. Processed metadata is not forced to be the timing source; it is used for transaction index when available.</p>");
+    out.push_str("<div class=\"table-wrap\"><table><thead><tr><th>First source</th><th>Count</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>max ms</th><th>same-slot</th><th>slot delta p50</th><th>slot delta p90</th><th>slot index p50</th></tr></thead><tbody>");
     for row in &report.source_summaries {
         out.push_str(&format!(
-            "<tr><td class=\"left\"><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{} / {:.1}%</td><td>{}</td><td>{}</td></tr>",
+            "<tr><td class=\"left\"><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{} / {:.1}%</td><td>{}</td><td>{}</td><td>{}</td></tr>",
             html_escape(&row.source_name),
             row.count,
             fmt_ms(row.submit_to_observed_p50_ms),
@@ -1258,11 +1462,31 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.note{background:#fff;
             row.same_slot_count,
             row.same_slot_rate * 100.0,
             fmt_i64(row.landed_slot_delta_p50),
+            fmt_i64(row.landed_slot_delta_p90),
             fmt_u64(row.slot_index_p50),
         ));
     }
-    out.push_str("</tbody></table>");
+    out.push_str("</tbody></table></div></section>");
 
+    out.push_str("<section class=\"section\"><h2>Unobserved Signatures</h2><p class=\"muted\">Submitted caller signatures that were not observed by the configured landing streams during the collection window. This is the investigation bucket for probable drops, very late landings beyond the observation tail, or observation-path misses. Full signatures and route ACKs live in <a href=\"unobserved.html\">the unobserved artifact</a>.</p>");
+    out.push_str("<div class=\"table-wrap\"><table><thead><tr><th>Signature</th><th>Arm</th><th>Routes</th><th>Send slot</th><th>Send leader</th><th>Send client</th><th>Provider ACK</th><th>Route ACKs</th><th>Total generated spend</th></tr></thead><tbody>");
+    for row in report.unobserved_events.iter().take(24) {
+        out.push_str(&format!(
+            "<tr><td class=\"left sig\"><code>{}</code></td><td><code>{}</code></td><td class=\"left\"><code>{}</code></td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td class=\"left\"><code>{}</code></td><td>{}</td></tr>",
+            html_escape(&short_sig(&row.signature)),
+            html_escape(row.policy_arm.as_deref().unwrap_or("-")),
+            html_escape(&row.selected_routes.join("+")),
+            row.send_slot,
+            html_escape(&leader_label(&row.send_leader_identity, &row.send_leader_city)),
+            html_escape(&row.send_leader_client),
+            html_escape(&provider_ack_label(row.provider_accepted, row.provider_ack_latency_us)),
+            html_escape(&route_results_summary(&row.route_results)),
+            fmt_u64(row.total_generated_spend_lamports),
+        ));
+    }
+    out.push_str("</tbody></table></div></section>");
+
+    out.push_str("<section class=\"section\"><h2>Leader Cohorts</h2><p class=\"muted\">Cohorts are grouped by the scheduled/landed leader metadata captured from <code>getLeaderSlots</code>. They are useful for tail hunting, not as final claims from a 5-minute smoke.</p>");
     for kind in [
         "leader_region",
         "leader_city",
@@ -1272,7 +1496,7 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.note{background:#fff;
         "stake_bucket",
     ] {
         out.push_str(&format!(
-            "<h2>Cohort: <code>{}</code></h2><table><thead><tr><th>Value</th><th>Source</th><th>Count</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>max ms</th></tr></thead><tbody>",
+            "<h2><code>{}</code></h2><div class=\"table-wrap\"><table><thead><tr><th>Value</th><th>Source</th><th>Count</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>max ms</th></tr></thead><tbody>",
             html_escape(kind)
         ));
         for row in report
@@ -1292,13 +1516,14 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.note{background:#fff;
                 fmt_ms(row.submit_to_observed_max_ms),
             ));
         }
-        out.push_str("</tbody></table>");
+        out.push_str("</tbody></table></div>");
     }
+    out.push_str("</section>");
 
-    out.push_str("<h2>Tail Events</h2><p class=\"muted\">Latency uses the first observation time, normally deshred. Transaction slot index uses processed Yellowstone/gRPC metadata when available; deshred is the fastest timing source, processed is the canonical source for transaction metadata.</p><table><thead><tr><th>Signature</th><th>Source</th><th>Latency ms</th><th>Arm</th><th>Routes</th><th>Send slot</th><th>Send leader</th><th>Send client</th><th>Landed slot</th><th>Landed leader</th><th>Landed client</th><th>Tx index</th><th>Tx fee</th><th>Route tip gen</th><th>Route tip landed</th><th>Total landed</th></tr></thead><tbody>");
+    out.push_str("<section class=\"section\"><h2>Tail Events</h2><p class=\"muted\">Slowest first-observed caller transactions. Timing uses the first stream observation; transaction index uses processed metadata when available. Full signatures and CSV/JSON live in <a href=\"tails.html\">the tail artifact</a>.</p><div class=\"table-wrap\"><table><thead><tr><th>Signature</th><th>Source</th><th>Latency ms</th><th>Arm</th><th>Routes</th><th>Send slot</th><th>Send leader</th><th>Send client</th><th>Landed slot</th><th>Landed leader</th><th>Landed client</th><th>Tx index</th><th>Tx fee</th><th>Route tip gen</th><th>Route tip landed</th><th>Total landed</th></tr></thead><tbody>");
     for row in &report.tail_events {
         out.push_str(&format!(
-            "<tr><td class=\"left\"><code>{}</code></td><td><code>{}</code></td><td>{:.3}</td><td><code>{}</code></td><td class=\"left\"><code>{}</code></td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            "<tr><td class=\"left sig\"><code>{}</code></td><td><code>{}</code></td><td>{:.3}</td><td><code>{}</code></td><td class=\"left\"><code>{}</code></td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
             html_escape(&short_sig(&row.signature)),
             html_escape(&row.source_name),
             row.latency_ms,
@@ -1317,9 +1542,9 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.note{background:#fff;
             fmt_u64(row.total_landed_spend_lamports),
         ));
     }
-    out.push_str("</tbody></table>");
+    out.push_str("</tbody></table></div></section>");
 
-    out.push_str("<details><summary><b>Sender ACK diagnostics</b></summary><p class=\"muted\">ACK confirms that the relay accepted or rejected the request. It is useful for route availability and gateway health debugging, but it is not landing proof and is not used as a performance target.</p><table><thead><tr><th>Provider</th><th>Policy</th><th>Routes</th><th>Count</th><th>Accepted</th><th>Errors</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>max ms</th></tr></thead><tbody>");
+    out.push_str("<details><summary><b>Sender ACK diagnostics</b></summary><p class=\"muted\">ACK confirms that the relay accepted or rejected the request. It is useful for route availability and gateway health debugging, but it is not landing proof and is not used as a performance target.</p><div class=\"table-wrap\"><table><thead><tr><th>Provider</th><th>Policy</th><th>Routes</th><th>Count</th><th>Accepted</th><th>Errors</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>max ms</th></tr></thead><tbody>");
     for row in &report.provider_summaries {
         out.push_str(&format!(
             "<tr><td class=\"left\"><code>{}</code></td><td><code>{}</code></td><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
@@ -1335,8 +1560,16 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.note{background:#fff;
             fmt_ms(row.ack_max_ms),
         ));
     }
-    out.push_str("</tbody></table></details></main></body></html>");
+    out.push_str("</tbody></table></div></details></main></body></html>");
     out
+}
+
+fn primary_source_summary(report: &ReportOutput) -> Option<&SourceReportSummary> {
+    report.source_summaries.iter().max_by(|a, b| {
+        a.first_seen
+            .cmp(&b.first_seen)
+            .then_with(|| a.count.cmp(&b.count))
+    })
 }
 
 fn write_tail_artifacts(artifact_dir: &Path, tail_events: &[TailEvent]) -> Result<()> {
@@ -1355,6 +1588,35 @@ fn write_tail_artifacts(artifact_dir: &Path, tail_events: &[TailEvent]) -> Resul
         tail_events_html(tail_events),
     )
     .with_context(|| format!("write {}", artifact_dir.join("tails.html").display()))?;
+    Ok(())
+}
+
+fn write_unobserved_artifacts(artifact_dir: &Path, rows: &[UnobservedEvent]) -> Result<()> {
+    fs::write(
+        artifact_dir.join("unobserved-events.json"),
+        serde_json::to_vec_pretty(rows)?,
+    )
+    .with_context(|| {
+        format!(
+            "write {}",
+            artifact_dir.join("unobserved-events.json").display()
+        )
+    })?;
+    fs::write(
+        artifact_dir.join("unobserved-events.csv"),
+        unobserved_events_csv(rows),
+    )
+    .with_context(|| {
+        format!(
+            "write {}",
+            artifact_dir.join("unobserved-events.csv").display()
+        )
+    })?;
+    fs::write(
+        artifact_dir.join("unobserved.html"),
+        unobserved_events_html(rows),
+    )
+    .with_context(|| format!("write {}", artifact_dir.join("unobserved.html").display()))?;
     Ok(())
 }
 
@@ -1420,11 +1682,12 @@ fn tail_events_csv(rows: &[TailEvent]) -> String {
 fn tail_events_html(rows: &[TailEvent]) -> String {
     let mut out = String::new();
     out.push_str("<!doctype html><html><head><meta charset=\"utf-8\"><title>Tail Events</title>");
-    out.push_str("<style>body{font-family:Inter,system-ui,sans-serif;margin:32px;color:#17202a}table{border-collapse:collapse;width:100%;font-size:13px}th,td{border-bottom:1px solid #e5e8ec;padding:7px 8px;text-align:right;vertical-align:top}th:first-child,td:first-child,td.left{text-align:left}th{background:#f2f4f7}.sig{font-family:ui-monospace,monospace;font-size:12px;word-break:break-all}code{background:#eef1f4;padding:1px 4px;border-radius:4px}.muted{color:#637083}</style>");
-    out.push_str("</head><body><h1>Tail Events</h1>");
-    out.push_str("<p class=\"muted\">Full signatures and route arms for the slowest first-observed landing events. Latency uses the first observation, normally deshred. Transaction index uses processed Yellowstone/gRPC metadata when available. Route-tip landed cost counts only observed tip signatures.</p>");
-    out.push_str("<p><a href=\"./\">Full report</a> · <a href=\"./policy-comparison/\">Policy comparison</a> · <a href=\"tail-events.csv\">CSV</a> · <a href=\"tail-events.json\">JSON</a></p>");
-    out.push_str("<table><thead><tr><th>Signature</th><th>First source</th><th>Latency ms</th><th>Arm</th><th>Routes</th><th>Send slot</th><th>Send leader</th><th>Send client</th><th>Landed slot</th><th>Landed leader</th><th>Landed client</th><th>Tx index</th><th>Tx fee</th><th>Route tip gen</th><th>Route tip landed</th><th>Total landed</th></tr></thead><tbody>");
+    out.push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+    out.push_str("<style>*{box-sizing:border-box}body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:#f5f7f8;color:#17202a;line-height:1.45}main{max-width:1380px;margin:0 auto;padding:28px}.hero,.section{background:#fff;border:1px solid #dfe5e8;border-radius:8px;padding:20px;margin-bottom:16px}.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#667681;font-weight:700}h1{font-size:30px;margin:6px 0 8px}.muted{color:#667681}.links{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.pill{display:inline-flex;border:1px solid #d9e1e5;background:#f7fafb;border-radius:999px;padding:3px 8px;font-size:12px;color:#465760;text-decoration:none}.table-wrap{overflow-x:auto;border:1px solid #e2e8eb;border-radius:8px;background:#fff}table{border-collapse:collapse;width:100%;min-width:1280px}th,td{border-bottom:1px solid #edf1f3;padding:8px 10px;text-align:right;vertical-align:top;font-size:13px;white-space:nowrap}th:first-child,td:first-child,td.left{text-align:left}th{background:#f0f4f6;color:#41515b;font-weight:700}.sig{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all;white-space:normal}code{background:#eef2f4;padding:1px 5px;border-radius:4px}@media(max-width:720px){main{padding:14px}.hero,.section{padding:16px}h1{font-size:24px}}</style>");
+    out.push_str("</head><body><main><section class=\"hero\"><div class=\"eyebrow\">RPCEdge benchmark tail inspection</div><h1>Tail Events</h1>");
+    out.push_str("<p class=\"muted\">Full signatures and route arms for the slowest first-observed landing events. Latency uses the first stream observation. Transaction index uses processed Yellowstone/gRPC metadata when available. Route-tip landed cost counts only observed tip signatures.</p>");
+    out.push_str("<div class=\"links\"><a class=\"pill\" href=\"./\">Full report</a><a class=\"pill\" href=\"./policy-comparison/\">Policy comparison</a><a class=\"pill\" href=\"tail-events.csv\">CSV</a><a class=\"pill\" href=\"tail-events.json\">JSON</a></div></section>");
+    out.push_str("<section class=\"section\"><div class=\"table-wrap\"><table><thead><tr><th>Signature</th><th>First source</th><th>Latency ms</th><th>Arm</th><th>Routes</th><th>Send slot</th><th>Send leader</th><th>Send client</th><th>Landed slot</th><th>Landed leader</th><th>Landed client</th><th>Tx index</th><th>Tx fee</th><th>Route tip gen</th><th>Route tip landed</th><th>Total landed</th></tr></thead><tbody>");
     for row in rows {
         out.push_str(&format!(
             "<tr><td class=\"left sig\">{}</td><td><code>{}</code></td><td>{:.3}</td><td><code>{}</code></td><td class=\"left\"><code>{}</code></td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
@@ -1446,8 +1709,139 @@ fn tail_events_html(rows: &[TailEvent]) -> String {
             fmt_u64(row.total_landed_spend_lamports),
         ));
     }
-    out.push_str("</tbody></table></body></html>");
+    out.push_str("</tbody></table></div></section></main></body></html>");
     out
+}
+
+fn unobserved_events_csv(rows: &[UnobservedEvent]) -> String {
+    let mut out = String::new();
+    out.push_str("signature,policy_arm,route_policy,selected_routes,comparison_group_id,sent_at,send_slot,leader_run_start_slot,leader_run_end_slot,trigger_source,slot_signal_status,send_leader_identity,send_leader_region,send_leader_city,send_leader_client,provider_name,provider_accepted,provider_ack_latency_us,provider_request_id,status_code,error_class,error,route_results_complete,route_results,compute_unit_price_microlamports,base_fee_lamports,priority_fee_lamports,transaction_fee_lamports,route_tip_generated_lamports,total_generated_spend_lamports\n");
+    for row in rows {
+        let fields = [
+            row.signature.clone(),
+            row.policy_arm.clone().unwrap_or_default(),
+            row.route_policy.clone().unwrap_or_default(),
+            row.selected_routes.join("+"),
+            row.comparison_group_id.clone().unwrap_or_default(),
+            row.sent_at.to_rfc3339_opts(SecondsFormat::Micros, true),
+            row.send_slot.to_string(),
+            row.leader_run_start_slot.to_string(),
+            row.leader_run_end_slot.to_string(),
+            row.trigger_source.clone(),
+            row.slot_signal_status.clone().unwrap_or_default(),
+            row.send_leader_identity.clone(),
+            row.send_leader_region.clone(),
+            row.send_leader_city.clone(),
+            row.send_leader_client.clone(),
+            row.provider_name.clone().unwrap_or_default(),
+            row.provider_accepted
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.provider_ack_latency_us
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.provider_request_id.clone().unwrap_or_default(),
+            row.status_code
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.error_class.clone().unwrap_or_default(),
+            row.error.clone().unwrap_or_default(),
+            row.route_results_complete
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            route_results_summary(&row.route_results),
+            row.compute_unit_price_microlamports
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.base_fee_lamports
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.priority_fee_lamports
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.transaction_fee_lamports
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.route_tip_generated_lamports
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.total_generated_spend_lamports
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+        ];
+        out.push_str(
+            &fields
+                .iter()
+                .map(|field| csv_escape(field))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+        out.push('\n');
+    }
+    out
+}
+
+fn unobserved_events_html(rows: &[UnobservedEvent]) -> String {
+    let mut out = String::new();
+    out.push_str(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Unobserved Signatures</title>",
+    );
+    out.push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+    out.push_str("<style>*{box-sizing:border-box}body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:#f5f7f8;color:#17202a;line-height:1.45}main{max-width:1380px;margin:0 auto;padding:28px}.hero,.section{background:#fff;border:1px solid #dfe5e8;border-radius:8px;padding:20px;margin-bottom:16px}.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#667681;font-weight:700}h1{font-size:30px;margin:6px 0 8px}.muted{color:#667681}.links{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.pill{display:inline-flex;border:1px solid #d9e1e5;background:#f7fafb;border-radius:999px;padding:3px 8px;font-size:12px;color:#465760;text-decoration:none}.table-wrap{overflow-x:auto;border:1px solid #e2e8eb;border-radius:8px;background:#fff}table{border-collapse:collapse;width:100%;min-width:1320px}th,td{border-bottom:1px solid #edf1f3;padding:8px 10px;text-align:right;vertical-align:top;font-size:13px;white-space:nowrap}th:first-child,td:first-child,td.left{text-align:left}th{background:#f0f4f6;color:#41515b;font-weight:700}.sig{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all;white-space:normal}code{background:#eef2f4;padding:1px 5px;border-radius:4px}@media(max-width:720px){main{padding:14px}.hero,.section{padding:16px}h1{font-size:24px}}</style>");
+    out.push_str("</head><body><main><section class=\"hero\"><div class=\"eyebrow\">RPCEdge benchmark failure inspection</div><h1>Unobserved Signatures</h1>");
+    out.push_str("<p class=\"muted\">Submitted caller signatures that were not observed by the configured landing streams during the collection window. Use this page to inspect likely drops, landings beyond the observation tail, or observation-path misses by scheduled leader and route ACK status.</p>");
+    out.push_str("<div class=\"links\"><a class=\"pill\" href=\"./\">Full report</a><a class=\"pill\" href=\"./policy-comparison/\">Policy comparison</a><a class=\"pill\" href=\"tails.html\">Tail events</a><a class=\"pill\" href=\"unobserved-events.csv\">CSV</a><a class=\"pill\" href=\"unobserved-events.json\">JSON</a></div></section>");
+    out.push_str("<section class=\"section\"><div class=\"table-wrap\"><table><thead><tr><th>Signature</th><th>Arm</th><th>Routes</th><th>Send slot</th><th>Scheduled leader</th><th>Client</th><th>Provider ACK</th><th>Route ACKs</th><th>Generated spend</th><th>Provider error</th></tr></thead><tbody>");
+    for row in rows {
+        out.push_str(&format!(
+            "<tr><td class=\"left sig\">{}</td><td><code>{}</code></td><td class=\"left\"><code>{}</code></td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td class=\"left\"><code>{}</code></td><td>{}</td><td class=\"left\">{}</td></tr>",
+            html_escape(&row.signature),
+            html_escape(row.policy_arm.as_deref().unwrap_or("-")),
+            html_escape(&row.selected_routes.join("+")),
+            row.send_slot,
+            html_escape(&leader_label(&row.send_leader_identity, &row.send_leader_city)),
+            html_escape(&row.send_leader_client),
+            html_escape(&provider_ack_label(row.provider_accepted, row.provider_ack_latency_us)),
+            html_escape(&route_results_summary(&row.route_results)),
+            fmt_u64(row.total_generated_spend_lamports),
+            html_escape(
+                &row.error
+                    .clone()
+                    .or_else(|| row.error_class.clone())
+                    .unwrap_or_else(|| "-".to_string())
+            ),
+        ));
+    }
+    out.push_str("</tbody></table></div></section></main></body></html>");
+    out
+}
+
+fn provider_ack_label(accepted: Option<bool>, latency_us: Option<u128>) -> String {
+    match (accepted, latency_us) {
+        (Some(true), Some(latency_us)) => format!("accepted {:.3}ms", latency_us as f64 / 1000.0),
+        (Some(true), None) => "accepted".to_string(),
+        (Some(false), Some(latency_us)) => format!("rejected {:.3}ms", latency_us as f64 / 1000.0),
+        (Some(false), None) => "rejected".to_string(),
+        (None, _) => "-".to_string(),
+    }
+}
+
+fn route_results_summary(rows: &[crate::adapters::RouteResultAck]) -> String {
+    if rows.is_empty() {
+        return "-".to_string();
+    }
+    rows.iter()
+        .map(|row| {
+            let status = if row.accepted { "ok" } else { "err" };
+            let mut label = format!("{}:{status}:{}us", row.route, row.latency_us);
+            if let Some(error_class) = &row.error_class {
+                label.push(':');
+                label.push_str(error_class);
+            }
+            label
+        })
+        .collect::<Vec<_>>()
+        .join(" | ")
 }
 
 fn csv_escape(value: &str) -> String {
