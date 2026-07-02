@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "title": "RPCEdge Paired Route Policy Comparison",
-  "generated_at": "2026-07-02T02:43:33.452099099Z",
+  "generated_at": "2026-07-02T03:58:05.036808639Z",
   "primary_source": "first_observed",
   "run_count": 3,
   "runs": [
@@ -119,5 +119,9 @@
         "success_ratio": 96.27659574468085
       }
     }
+  ],
+  "warnings": [
+    "Compared runs use different average priority fees. Treat this as exploratory; clean route-policy baselines must use the same compute-unit limit and compute-unit price in every arm.",
+    "At least one compared run includes jito_bundle. Full economic cost is incomplete unless route-tip telemetry is joined; the visible priority-fee column does not include relay-added Jito tips."
   ]
 }

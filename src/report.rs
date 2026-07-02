@@ -7,7 +7,7 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs::{self, File},
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
@@ -24,6 +24,7 @@ pub struct ReportOutput {
     pub source_summaries: Vec<SourceReportSummary>,
     pub cohort_summaries: Vec<CohortReportSummary>,
     pub tail_events: Vec<TailEvent>,
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,9 +84,26 @@ pub struct TailEvent {
     pub signature: String,
     pub source_name: String,
     pub latency_ms: f64,
+    pub policy_arm: Option<String>,
+    pub route_policy: Option<String>,
+    pub selected_routes: Vec<String>,
+    pub comparison_group_id: Option<String>,
+    pub sent_at: Option<DateTime<Utc>>,
     pub send_slot: Option<u64>,
     pub landed_slot: Option<u64>,
     pub slot_index: Option<u64>,
+    pub first_observed_slot_index: Option<u64>,
+    pub processed_slot_index: Option<u64>,
+    pub send_leader_identity: String,
+    pub send_leader_region: String,
+    pub send_leader_city: String,
+    pub send_leader_client: String,
+    pub landed_leader_identity: String,
+    pub landed_leader_region: String,
+    pub landed_leader_city: String,
+    pub landed_leader_client: String,
+    pub compute_unit_price_microlamports: Option<u64>,
+    pub estimated_spend_lamports: Option<u64>,
     pub leader_identity: String,
     pub leader_region: String,
     pub leader_city: String,
@@ -138,6 +156,12 @@ pub fn generate_report(artifact_dir: &Path) -> Result<ReportOutput> {
         .cloned()
         .map(|send| (send.signature.clone(), send))
         .collect::<BTreeMap<_, _>>();
+    let sample_by_signature = samples
+        .iter()
+        .cloned()
+        .map(|sample| (sample.signature.clone(), sample))
+        .collect::<BTreeMap<_, _>>();
+    let processed_slot_index_by_signature = build_processed_slot_index_lookup(&observations);
 
     let rows = observations
         .iter()
@@ -202,7 +226,14 @@ pub fn generate_report(artifact_dir: &Path) -> Result<ReportOutput> {
         provider_summaries: summarize_providers(&samples, manifest.as_ref()),
         source_summaries: summarize_sources(&landing_rows),
         cohort_summaries: summarize_cohorts(&landing_rows),
-        tail_events: summarize_tail_events(&landing_rows, 12),
+        tail_events: summarize_tail_events(
+            &landing_rows,
+            &sample_by_signature,
+            &processed_slot_index_by_signature,
+            &leader_by_slot,
+            12,
+        ),
+        warnings: report_warnings(&samples, &sends),
     };
 
     fs::write(
@@ -214,8 +245,49 @@ pub fn generate_report(artifact_dir: &Path) -> Result<ReportOutput> {
         .with_context(|| format!("write {}", artifact_dir.join("report.md").display()))?;
     fs::write(artifact_dir.join("report.html"), report_html(&report))
         .with_context(|| format!("write {}", artifact_dir.join("report.html").display()))?;
+    write_tail_artifacts(artifact_dir, &report.tail_events)?;
 
     Ok(report)
+}
+
+fn report_warnings(samples: &[BenchSample], sends: &[LeaderSendEvent]) -> Vec<String> {
+    let mut warnings = Vec::new();
+    let send_cu_prices = sends
+        .iter()
+        .map(|send| send.compute_unit_price_microlamports)
+        .collect::<BTreeSet<_>>();
+    let sample_cu_prices = samples
+        .iter()
+        .map(|sample| sample.compute_unit_price_microlamports)
+        .collect::<BTreeSet<_>>();
+
+    if send_cu_prices.len() > 1 || sample_cu_prices.len() > 1 {
+        warnings.push(
+            "This artifact used mixed compute-unit prices. Treat it as exploratory; it is not a clean route-policy baseline. Current baselines must use the same compute-unit limit and compute-unit price for every policy arm.".to_string(),
+        );
+    }
+
+    let has_jito_route = samples.iter().any(|sample| {
+        sample
+            .selected_routes
+            .iter()
+            .any(|route| route == "jito_bundle")
+    });
+    if has_jito_route {
+        let has_route_tip = samples.iter().any(|sample| {
+            sample
+                .route_results
+                .iter()
+                .any(|result| result.route_tip_lamports.unwrap_or(0) > 0)
+        });
+        if !has_route_tip {
+            warnings.push(
+                "This artifact includes jito_bundle route attempts. Transaction spend fields cover base fee and configured priority fee only because no route-tip telemetry was present in the artifacts.".to_string(),
+            );
+        }
+    }
+
+    warnings
 }
 
 fn first_observed_rows(rows: &[ObservationRow]) -> Vec<ObservationRow> {
@@ -289,6 +361,27 @@ fn read_manifest(artifact_dir: &Path) -> Result<Option<crate::artifacts::BenchMa
         serde_json::from_slice::<crate::artifacts::BenchManifest>(&bytes)
             .with_context(|| format!("parse {}", path.display()))?,
     ))
+}
+
+fn build_processed_slot_index_lookup(events: &[ObservationEvent]) -> BTreeMap<String, u64> {
+    let mut rows = events
+        .iter()
+        .filter_map(|event| {
+            let slot_index = event.slot_index?;
+            let source_name = event.source_name.to_ascii_lowercase();
+            let is_processed = event.source_kind
+                == crate::observations::ObservationSourceKind::YellowstoneProcessed
+                || source_name.contains("processed");
+            is_processed.then_some((event.signature.clone(), event.observed_at, slot_index))
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by_key(|(_, observed_at, _)| *observed_at);
+
+    let mut out = BTreeMap::new();
+    for (signature, _, slot_index) in rows {
+        out.entry(signature).or_insert(slot_index);
+    }
+    out
 }
 
 fn build_leader_lookup(snapshots: &[LeaderSlotsSnapshotArtifact]) -> BTreeMap<u64, LeaderMeta> {
@@ -561,7 +654,13 @@ fn summarize_cohorts(rows: &[ObservationRow]) -> Vec<CohortReportSummary> {
     summaries
 }
 
-fn summarize_tail_events(rows: &[ObservationRow], limit: usize) -> Vec<TailEvent> {
+fn summarize_tail_events(
+    rows: &[ObservationRow],
+    sample_by_signature: &BTreeMap<String, BenchSample>,
+    processed_slot_index_by_signature: &BTreeMap<String, u64>,
+    leader_by_slot: &BTreeMap<u64, LeaderMeta>,
+    limit: usize,
+) -> Vec<TailEvent> {
     let mut rows = rows
         .iter()
         .filter_map(|row| {
@@ -572,19 +671,99 @@ fn summarize_tail_events(rows: &[ObservationRow], limit: usize) -> Vec<TailEvent
     rows.sort_by(|a, b| b.0.cmp(&a.0));
     rows.into_iter()
         .take(limit)
-        .map(|(latency_us, row)| TailEvent {
-            signature: row.event.signature.clone(),
-            source_name: row.event.source_name.clone(),
-            latency_ms: latency_us as f64 / 1000.0,
-            send_slot: row.send.as_ref().map(|send| send.send_slot),
-            landed_slot: row.event.slot,
-            slot_index: row.event.slot_index,
-            leader_identity: row.leader.identity.clone(),
-            leader_region: row.leader.region.clone(),
-            leader_city: row.leader.city.clone(),
-            leader_client: row.leader.client_software.clone(),
+        .map(|(latency_us, row)| {
+            let sample = sample_by_signature.get(&row.event.signature);
+            let send = row.send.as_ref();
+            let send_leader = send_leader_meta(send, leader_by_slot);
+            let processed_slot_index = processed_slot_index_by_signature
+                .get(&row.event.signature)
+                .copied();
+            let slot_index = processed_slot_index.or(row.event.slot_index);
+            let policy_arm = sample
+                .and_then(|sample| sample.policy_arm.clone())
+                .or_else(|| send.and_then(|send| send.policy_arm.clone()));
+            let route_policy = sample
+                .and_then(|sample| sample.route_policy.clone())
+                .or_else(|| send.and_then(|send| send.route_policy.clone()));
+            let selected_routes = sample
+                .map(|sample| sample.selected_routes.clone())
+                .filter(|routes| !routes.is_empty())
+                .or_else(|| {
+                    send.map(|send| send.selected_routes.clone())
+                        .filter(|routes| !routes.is_empty())
+                })
+                .unwrap_or_default();
+            let comparison_group_id = sample
+                .and_then(|sample| sample.comparison_group_id.clone())
+                .or_else(|| send.and_then(|send| send.comparison_group_id.clone()));
+            let compute_unit_price_microlamports = sample
+                .map(|sample| sample.compute_unit_price_microlamports)
+                .or_else(|| send.map(|send| send.compute_unit_price_microlamports));
+            let estimated_spend_lamports = sample
+                .map(|sample| sample.estimated_spend_lamports)
+                .or_else(|| send.map(|send| send.estimated_spend_lamports));
+
+            TailEvent {
+                signature: row.event.signature.clone(),
+                source_name: row.event.source_name.clone(),
+                latency_ms: latency_us as f64 / 1000.0,
+                policy_arm,
+                route_policy,
+                selected_routes,
+                comparison_group_id,
+                sent_at: send.map(|send| send.sent_at),
+                send_slot: send.map(|send| send.send_slot),
+                landed_slot: row.event.slot,
+                slot_index,
+                first_observed_slot_index: row.event.slot_index,
+                processed_slot_index,
+                send_leader_identity: send_leader.identity.clone(),
+                send_leader_region: send_leader.region.clone(),
+                send_leader_city: send_leader.city.clone(),
+                send_leader_client: send_leader.client_software.clone(),
+                landed_leader_identity: row.leader.identity.clone(),
+                landed_leader_region: row.leader.region.clone(),
+                landed_leader_city: row.leader.city.clone(),
+                landed_leader_client: row.leader.client_software.clone(),
+                compute_unit_price_microlamports,
+                estimated_spend_lamports,
+                leader_identity: row.leader.identity.clone(),
+                leader_region: row.leader.region.clone(),
+                leader_city: row.leader.city.clone(),
+                leader_client: row.leader.client_software.clone(),
+            }
         })
         .collect()
+}
+
+fn send_leader_meta(
+    send: Option<&LeaderSendEvent>,
+    leader_by_slot: &BTreeMap<u64, LeaderMeta>,
+) -> LeaderMeta {
+    let Some(send) = send else {
+        return normalize_meta(LeaderMeta::default());
+    };
+    leader_by_slot
+        .get(&send.send_slot)
+        .cloned()
+        .or_else(|| leader_by_slot.get(&send.leader_run_start_slot).cloned())
+        .unwrap_or_else(|| {
+            normalize_meta(LeaderMeta {
+                identity: send.leader_identity.clone(),
+                region: String::new(),
+                city: String::new(),
+                data_center_key: String::new(),
+                client_family: send
+                    .leader_client_family
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string()),
+                client_software: send
+                    .leader_software_client
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string()),
+                stake_bucket: String::new(),
+            })
+        })
 }
 
 fn percentile_ms(sorted_us: &[i128], p: f64) -> Option<f64> {
@@ -640,11 +819,14 @@ fn report_markdown(report: &ReportOutput) -> String {
         report.totals.leader_slot_snapshots,
     ));
     out.push_str("This report is generated only from local benchmark artifacts. Leader metadata comes from saved `getLeaderSlots` snapshots captured during the run; no ClickHouse or private database join is required.\n\n");
+    for warning in &report.warnings {
+        out.push_str(&format!("> **Warning:** {warning}\n\n"));
+    }
 
     out.push_str("## Landing Observations\n\n");
     out.push_str("Landing latency uses the earliest observation per transaction across configured streams. In normal RPCEdge runs this should be the deshred stream; processed metadata is only counted here when it is the first or only observation for a signature.\n\n");
     out.push_str("| First source | Count | p50 ms | p90 ms | p99 ms | max ms | same-slot | slot delta p50 | slot index p50 |\n");
-    out.push_str("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
+    out.push_str("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
     for row in &report.source_summaries {
         out.push_str(&format!(
             "| `{}` | {} | {} | {} | {} | {} | {} / {:.1}% | {} | {} |\n",
@@ -692,20 +874,24 @@ fn report_markdown(report: &ReportOutput) -> String {
     }
 
     out.push_str("\n## Tail Events\n\n");
-    out.push_str("| Signature | Source | Latency ms | Send slot | Landed slot | Slot index | Region | City | Client |\n");
-    out.push_str("| --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |\n");
+    out.push_str("Tail latency uses the first observation time, normally deshred. Transaction slot index uses processed Yellowstone/gRPC metadata when available, because deshred is fastest but processed carries canonical transaction metadata.\n\n");
+    out.push_str("| Signature | Source | Latency ms | Arm | Routes | Send slot | Send leader | Send client | Landed slot | Landed leader | Landed client | Tx index |\n");
+    out.push_str("| --- | --- | ---: | --- | --- | ---: | --- | --- | ---: | --- | --- | ---: |\n");
     for row in &report.tail_events {
         out.push_str(&format!(
-            "| `{}` | `{}` | {:.3} | {} | {} | {} | `{}` | `{}` | `{}` |\n",
+            "| `{}` | `{}` | {:.3} | `{}` | `{}` | {} | `{}` | `{}` | {} | `{}` | `{}` | {} |\n",
             short_sig(&row.signature),
             row.source_name,
             row.latency_ms,
+            row.policy_arm.as_deref().unwrap_or("-"),
+            row.selected_routes.join("+"),
             fmt_u64(row.send_slot),
+            leader_label(&row.send_leader_identity, &row.send_leader_city),
+            row.send_leader_client,
             fmt_u64(row.landed_slot),
-            fmt_u64(row.slot_index),
-            row.leader_region,
-            row.leader_city,
-            row.leader_client,
+            leader_label(&row.landed_leader_identity, &row.landed_leader_city),
+            row.landed_leader_client,
+            fmt_u64(row.processed_slot_index),
         ));
     }
     out.push_str("\n## Appendix: Sender ACK Diagnostics\n\n");
@@ -777,6 +963,12 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.note{background:#fff;
     }
     out.push_str("</div>");
     out.push_str("<div class=\"note\">Generated only from local benchmark artifacts. Leader metadata comes from saved <code>getLeaderSlots</code> snapshots captured during the run; no ClickHouse or private database join is required.</div>");
+    for warning in &report.warnings {
+        out.push_str(&format!(
+            "<div class=\"note\"><b>Warning:</b> {}</div>",
+            html_escape(warning)
+        ));
+    }
 
     out.push_str("<h2>Landing Observations</h2><p class=\"muted\">Landing latency uses the earliest observation per transaction across configured streams. In normal RPCEdge runs this should be the deshred stream; processed metadata is only counted here when it is the first or only observation for a signature.</p>");
     out.push_str("<table><thead><tr><th>First source</th><th>Count</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>max ms</th><th>same-slot</th><th>slot delta p50</th><th>slot index p50</th></tr></thead><tbody>");
@@ -829,19 +1021,22 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.note{background:#fff;
         out.push_str("</tbody></table>");
     }
 
-    out.push_str("<h2>Tail Events</h2><table><thead><tr><th>Signature</th><th>Source</th><th>Latency ms</th><th>Send slot</th><th>Landed slot</th><th>Slot index</th><th>Region</th><th>City</th><th>Client</th></tr></thead><tbody>");
+    out.push_str("<h2>Tail Events</h2><p class=\"muted\">Latency uses the first observation time, normally deshred. Transaction slot index uses processed Yellowstone/gRPC metadata when available; deshred is the fastest timing source, processed is the canonical source for transaction metadata.</p><table><thead><tr><th>Signature</th><th>Source</th><th>Latency ms</th><th>Arm</th><th>Routes</th><th>Send slot</th><th>Send leader</th><th>Send client</th><th>Landed slot</th><th>Landed leader</th><th>Landed client</th><th>Tx index</th></tr></thead><tbody>");
     for row in &report.tail_events {
         out.push_str(&format!(
-            "<tr><td class=\"left\"><code>{}</code></td><td><code>{}</code></td><td>{:.3}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            "<tr><td class=\"left\"><code>{}</code></td><td><code>{}</code></td><td>{:.3}</td><td><code>{}</code></td><td class=\"left\"><code>{}</code></td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td></tr>",
             html_escape(&short_sig(&row.signature)),
             html_escape(&row.source_name),
             row.latency_ms,
+            html_escape(row.policy_arm.as_deref().unwrap_or("-")),
+            html_escape(&row.selected_routes.join("+")),
             fmt_u64(row.send_slot),
+            html_escape(&leader_label(&row.send_leader_identity, &row.send_leader_city)),
+            html_escape(&row.send_leader_client),
             fmt_u64(row.landed_slot),
-            fmt_u64(row.slot_index),
-            html_escape(&row.leader_region),
-            html_escape(&row.leader_city),
-            html_escape(&row.leader_client),
+            html_escape(&leader_label(&row.landed_leader_identity, &row.landed_leader_city)),
+            html_escape(&row.landed_leader_client),
+            fmt_u64(row.processed_slot_index),
         ));
     }
     out.push_str("</tbody></table>");
@@ -864,6 +1059,113 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.note{background:#fff;
     }
     out.push_str("</tbody></table></details></main></body></html>");
     out
+}
+
+fn write_tail_artifacts(artifact_dir: &Path, tail_events: &[TailEvent]) -> Result<()> {
+    fs::write(
+        artifact_dir.join("tail-events.json"),
+        serde_json::to_vec_pretty(tail_events)?,
+    )
+    .with_context(|| format!("write {}", artifact_dir.join("tail-events.json").display()))?;
+    fs::write(
+        artifact_dir.join("tail-events.csv"),
+        tail_events_csv(tail_events),
+    )
+    .with_context(|| format!("write {}", artifact_dir.join("tail-events.csv").display()))?;
+    fs::write(
+        artifact_dir.join("tails.html"),
+        tail_events_html(tail_events),
+    )
+    .with_context(|| format!("write {}", artifact_dir.join("tails.html").display()))?;
+    Ok(())
+}
+
+fn tail_events_csv(rows: &[TailEvent]) -> String {
+    let mut out = String::new();
+    out.push_str("signature,source_name,latency_ms,policy_arm,route_policy,selected_routes,send_slot,send_leader_identity,send_leader_city,send_leader_client,landed_slot,landed_leader_identity,landed_leader_city,landed_leader_client,first_observed_slot_index,processed_slot_index,compute_unit_price_microlamports,estimated_spend_lamports,comparison_group_id\n");
+    for row in rows {
+        let fields = [
+            row.signature.clone(),
+            row.source_name.clone(),
+            format!("{:.3}", row.latency_ms),
+            row.policy_arm.clone().unwrap_or_default(),
+            row.route_policy.clone().unwrap_or_default(),
+            row.selected_routes.join("+"),
+            fmt_u64(row.send_slot),
+            row.send_leader_identity.clone(),
+            row.send_leader_city.clone(),
+            row.send_leader_client.clone(),
+            fmt_u64(row.landed_slot),
+            row.landed_leader_identity.clone(),
+            row.landed_leader_city.clone(),
+            row.landed_leader_client.clone(),
+            fmt_u64(row.first_observed_slot_index),
+            fmt_u64(row.processed_slot_index),
+            row.compute_unit_price_microlamports
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.estimated_spend_lamports
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.comparison_group_id.clone().unwrap_or_default(),
+        ];
+        out.push_str(
+            &fields
+                .iter()
+                .map(|field| csv_escape(field))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+        out.push('\n');
+    }
+    out
+}
+
+fn tail_events_html(rows: &[TailEvent]) -> String {
+    let mut out = String::new();
+    out.push_str("<!doctype html><html><head><meta charset=\"utf-8\"><title>Tail Events</title>");
+    out.push_str("<style>body{font-family:Inter,system-ui,sans-serif;margin:32px;color:#17202a}table{border-collapse:collapse;width:100%;font-size:13px}th,td{border-bottom:1px solid #e5e8ec;padding:7px 8px;text-align:right;vertical-align:top}th:first-child,td:first-child,td.left{text-align:left}th{background:#f2f4f7}.sig{font-family:ui-monospace,monospace;font-size:12px;word-break:break-all}code{background:#eef1f4;padding:1px 4px;border-radius:4px}.muted{color:#637083}</style>");
+    out.push_str("</head><body><h1>Tail Events</h1>");
+    out.push_str("<p class=\"muted\">Full signatures and route arms for the slowest first-observed landing events. Latency uses the first observation, normally deshred. Transaction index uses processed Yellowstone/gRPC metadata when available.</p>");
+    out.push_str("<p><a href=\"./\">Full report</a> · <a href=\"./policy-comparison/\">Policy comparison</a> · <a href=\"tail-events.csv\">CSV</a> · <a href=\"tail-events.json\">JSON</a></p>");
+    out.push_str("<table><thead><tr><th>Signature</th><th>First source</th><th>Latency ms</th><th>Arm</th><th>Routes</th><th>Send slot</th><th>Send leader</th><th>Send client</th><th>Landed slot</th><th>Landed leader</th><th>Landed client</th><th>Tx index</th></tr></thead><tbody>");
+    for row in rows {
+        out.push_str(&format!(
+            "<tr><td class=\"left sig\">{}</td><td><code>{}</code></td><td>{:.3}</td><td><code>{}</code></td><td class=\"left\"><code>{}</code></td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td></tr>",
+            html_escape(&row.signature),
+            html_escape(&row.source_name),
+            row.latency_ms,
+            html_escape(row.policy_arm.as_deref().unwrap_or("-")),
+            html_escape(&row.selected_routes.join("+")),
+            fmt_u64(row.send_slot),
+            html_escape(&leader_label(&row.send_leader_identity, &row.send_leader_city)),
+            html_escape(&row.send_leader_client),
+            fmt_u64(row.landed_slot),
+            html_escape(&leader_label(&row.landed_leader_identity, &row.landed_leader_city)),
+            html_escape(&row.landed_leader_client),
+            fmt_u64(row.processed_slot_index),
+        ));
+    }
+    out.push_str("</tbody></table></body></html>");
+    out
+}
+
+fn csv_escape(value: &str) -> String {
+    if value.contains([',', '"', '\n']) {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
+}
+
+fn leader_label(identity: &str, city: &str) -> String {
+    if identity == "unknown" && city == "unknown" {
+        "unknown".to_string()
+    } else if city == "unknown" || city.is_empty() {
+        identity.to_string()
+    } else {
+        format!("{identity} ({city})")
+    }
 }
 
 fn fmt_ms(value: Option<f64>) -> String {
@@ -926,7 +1228,8 @@ mod tests {
         .expect("sends");
         fs::write(
             root.join("matched-observations.ndjson"),
-            r#"{"schema_version":1,"test_id":"run-a","signature":"sig-a","source_name":"deshred","source_kind":"yellowstone_deshred","observed_at":"2026-01-01T00:00:00.100Z","submitted_at":"2026-01-01T00:00:00Z","slot":100,"slot_index":7,"source_sequence":null}"#,
+            r#"{"schema_version":1,"test_id":"run-a","signature":"sig-a","source_name":"deshred","source_kind":"yellowstone_deshred","observed_at":"2026-01-01T00:00:00.100Z","submitted_at":"2026-01-01T00:00:00Z","slot":101,"slot_index":null,"source_sequence":null}
+{"schema_version":1,"test_id":"run-a","signature":"sig-a","source_name":"processed","source_kind":"yellowstone_processed","observed_at":"2026-01-01T00:00:00.120Z","submitted_at":"2026-01-01T00:00:00Z","slot":101,"slot_index":42,"source_sequence":null}"#,
         )
         .expect("observations");
         let snapshot = LeaderSlotsSnapshotArtifact {
@@ -953,6 +1256,19 @@ mod tests {
                             "family": "jito",
                             "software": "JitoLabs"
                         }
+                    }, {
+                        "slot": 101,
+                        "identity": "leader-b",
+                        "stake": 900_000_000_000_000_u64,
+                        "location": {
+                            "region": "North America",
+                            "city": "Chicago",
+                            "dataCenterKey": "1072-US-Chicago"
+                        },
+                        "client": {
+                            "family": "harmonic",
+                            "software": "HarmonicAgave"
+                        }
                     }]
                 }
             }),
@@ -965,11 +1281,19 @@ mod tests {
 
         let report = generate_report(root).expect("report");
         assert_eq!(report.totals.matched_signatures, 1);
+        assert_eq!(report.tail_events.len(), 1);
+        let tail = &report.tail_events[0];
+        assert_eq!(tail.source_name, "deshred");
+        assert_eq!(tail.send_leader_identity, "leader-a");
+        assert_eq!(tail.landed_leader_identity, "leader-b");
+        assert_eq!(tail.processed_slot_index, Some(42));
         assert!(report
             .cohort_summaries
             .iter()
-            .any(|row| row.cohort_kind == "leader_region" && row.cohort_value == "Europe"));
+            .any(|row| row.cohort_kind == "leader_region" && row.cohort_value == "North America"));
         assert!(root.join("report.md").exists());
         assert!(root.join("report.html").exists());
+        assert!(root.join("tail-events.csv").exists());
+        assert!(root.join("tails.html").exists());
     }
 }

@@ -185,7 +185,6 @@ cargo run --release -- run-leader-paced \
   --txs-per-leader-run 1 \
   --leader-run-concurrency 3 \
   --slot-trigger grpc_slot \
-  --client-aware-harmonic-cu-price-microlamports 300000 \
   --capture-leader-slots \
   --collect-rpcedge
 ```
@@ -200,31 +199,65 @@ metadata, but it is broad enough that it can mark most scheduled stake as Jito
 related. Route-policy experiments should be based on explicit policies and
 observable outcomes, not on assuming `jito=true` means "always use Jito".
 
-For Harmonic leaders, the runner can raise the transaction's compute-unit price
-only for that leader family:
-
-```bash
---client-aware-harmonic-cu-price-microlamports 300000
-```
+Route-policy baselines must use the same transaction shape, compute-unit limit,
+and compute-unit price across every policy arm. Do not change priority fee
+because a route includes Harmonic or Jito. Harmonic-specific CU-price ladders
+belong in a separate explicit fee experiment, not the baseline comparison.
 
 As of the current Harmonic public docs, Harmonic does not describe a fixed
 minimum priority-fee floor. It describes Harmonic tips as normal Solana
-compute-unit priority fees, with no separate tip instruction. Treat the
-Harmonic CU price as a tested benchmark variable and record rejects explicitly;
-do not claim a provider minimum unless Harmonic publishes one or live tests prove
-one.
+compute-unit priority fees, with no separate tip instruction. Record live
+rejects explicitly; do not claim a provider minimum unless Harmonic publishes
+one or repeated live tests prove one.
 
 For Jito leaders, `jito_bundle` is an internal RPCEdge route in this benchmark.
 The relay adds the Jito bundle tip transaction when the route executes. The
-benchmark's public fast ACK may not include the added tip signature; private
-RPCEdge route-attempt telemetry records `route_tip_signature`,
-`route_tip_lamports`, and `route_tip_account` for route-causal analysis.
+benchmark's public fast ACK does not include the added tip signature. For QUIC
+benchmarks, set `route_results: true` on the RPCEdge provider to request bounded
+route-result ACKs. When returned, artifacts include `route_tip_signature`,
+`route_tip_lamports`, and `route_tip_account`; reports display route-added tip
+cost and total estimated spend. If route-tip telemetry is absent, cost ranking
+is incomplete for any arm that includes `jito_bundle`. The public
+`estimated_spend_lamports` field covers the benchmark transaction's base fee
+plus configured compute-unit price only.
+
+Retries and intentional resends are not part of the route-policy baseline.
+The baseline measures one signed transaction per policy arm from the same gRPC
+slot signal. Retry-after-X-ms, duplicate fanout, and burst/spam ladders are
+valid product experiments for tail mitigation, but they must be labeled as
+separate reliability strategies because they change traffic shape, fee spend,
+and block-position pressure.
 
 Rakurai and Raiku are intentionally not mapped to Jito or Harmonic by the
-software-client-aware strategy. Rakurai publishes its own transaction-inclusion
-and virtual-priority path, and Raiku appears as a separate client ID. Until
-RPCEdge has a dedicated route for either provider, those clients remain TPU-only
-in software-client-aware benchmarks.
+software-client-aware strategy as a proved integration. Rakurai publishes its
+own transaction-inclusion and virtual-priority path, and Raiku appears as a
+separate client ID. For the current benchmark hypothesis, `software_client_aware`
+routes Rakurai/Raiku leaders through `tpu_quic + jito_bundle + harmonic_bundle`
+to test whether either block-engine route helps those leaders before we build a
+dedicated Rakurai adapter.
+
+Rakurai should be modeled as a separate future route, not as Jito-by-another
+name. Their public transaction-inclusion docs describe three different
+surfaces:
+
+- **Bundle partner mode**: a transaction landing service shares a block-engine
+  endpoint list with Rakurai; opted-in Rakurai validators connect to that
+  endpoint and then accept bundles that include a Rakurai-recognized tip
+  transfer. This is an integration between Rakurai validators and a block
+  engine, not the same as calling the Jito bundle route.
+- **Virtual priority**: add a normal `SystemProgram.transfer` tip to one of
+  Rakurai's tip accounts inside the transaction or bundle. The tip is an extra
+  scheduler signal and does not replace regular Solana priority fees.
+- **Post-pack confirmations**: Rakurai can stream post-pack transaction packets
+  to configured gRPC endpoints; consumers can respond with bundles that include
+  the original packet plus additional transactions.
+
+A future `rakurai_virtual_priority` adapter should record the Rakurai tip
+account, tip lamports, and transaction signature in artifacts. A future
+`rakurai_bundle_partner` adapter should record the returned bundle identifier
+and any partner/custom tip account configuration. Until those adapters exist,
+benchmark reports should label Rakurai/Raiku `software_client_aware` rows as a
+generic TPU+Jito+Harmonic race, not as a Rakurai-native route.
 
 Observation collection is required for landing metrics. Without
 `--collect-rpcedge` or a separate collector keyed by the same `test_id`, the
@@ -259,7 +292,32 @@ solana-tx-bench report --artifact-dir artifacts/<test_id>
 ```
 
 This command reads only local artifacts from the run directory and writes
-`report.json`, `report.md`, and `report.html`.
+`report.json`, `report.md`, `report.html`, `tail-events.json`,
+`tail-events.csv`, and `tails.html`.
+
+## Tail Event Methodology
+
+Tail rows are meant to explain bad landings, not only list slow signatures.
+They therefore keep both sides of the leader attribution:
+
+- **Send slot / send leader**: the leader visible when the benchmark submitted
+  the transaction, from `leader-sends.ndjson` and the saved `getLeaderSlots`
+  snapshot.
+- **Landed slot / landed leader**: the leader of the slot where the first
+  stream observation reported the transaction.
+
+This distinction matters for multi-second tails. A transaction can be sent
+during one leader's window and finally land under a later leader; blaming only
+the landed leader hides whether the sender route missed the original leader or
+whether the transaction was forwarded/held until a later slot.
+
+Latency uses the first stream observation for the signature, normally
+SubscribeDeshred, because it is the fastest public signal this benchmark
+collects. Transaction block position uses Yellowstone processed gRPC metadata
+when available, because processed transaction updates carry the canonical
+`slot_index` while deshred observations generally do not. The report can
+therefore show `source=rpcedge_deshred` for the timing row and still show a
+processed `Tx index` for the same signature.
 
 ## Landing-Performance Buckets
 

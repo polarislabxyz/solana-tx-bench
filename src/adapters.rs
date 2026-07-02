@@ -4,7 +4,8 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use chrono::{DateTime, Utc};
 use reqwest::StatusCode;
 use rpcedge_relay_client::{
-    QuicRelayClient, QuicRelayClientConfig, RelayRoute, RouteSet as RelayRouteSet,
+    QuicRelayClient, QuicRelayClientConfig, RelayRoute,
+    RouteResultResponse as RelayRouteResultResponse, ResponseMode, RouteSet as RelayRouteSet,
     RouteSetMode as RelayRouteSetMode,
 };
 use serde::{Deserialize, Serialize};
@@ -55,6 +56,8 @@ pub enum ProviderConfig {
         routes: Vec<String>,
         #[serde(default)]
         server_name: Option<String>,
+        #[serde(default)]
+        route_results: bool,
     },
 }
 
@@ -185,6 +188,55 @@ pub struct ProviderAck {
     pub send_started_at: DateTime<Utc>,
     pub send_finished_at: DateTime<Utc>,
     pub ack_latency_us: u128,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub route_results: Vec<RouteResultAck>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route_results_complete: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RouteResultAck {
+    pub route: String,
+    pub route_name: String,
+    pub provider: String,
+    pub accepted: bool,
+    pub latency_us: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_status_code: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_error_code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bundle_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route_tip_signature: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route_tip_lamports: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route_tip_account: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+impl From<RelayRouteResultResponse> for RouteResultAck {
+    fn from(value: RelayRouteResultResponse) -> Self {
+        Self {
+            route: value.route,
+            route_name: value.route_name,
+            provider: value.provider,
+            accepted: value.accepted,
+            latency_us: value.latency_us,
+            error_class: value.error_class,
+            provider_status_code: value.provider_status_code,
+            provider_error_code: value.provider_error_code,
+            bundle_id: value.bundle_id,
+            route_tip_signature: value.route_tip_signature,
+            route_tip_lamports: value.route_tip_lamports,
+            route_tip_account: value.route_tip_account,
+            error: value.error,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -253,6 +305,7 @@ pub fn build_adapter(
             route_mode,
             routes,
             server_name,
+            route_results,
         } => Ok(Box::new(RpcedgeQuicRawTxAdapter {
             name,
             endpoint,
@@ -264,6 +317,7 @@ pub fn build_adapter(
                 .map(|route| parse_relay_route(route))
                 .collect::<Result<Vec<_>>>()?,
             server_name,
+            route_results,
             timeout,
             client: None,
         })),
@@ -308,6 +362,7 @@ struct RpcedgeQuicRawTxAdapter {
     route_mode: RouteMode,
     routes: Vec<RelayRoute>,
     server_name: Option<String>,
+    route_results: bool,
     timeout: Duration,
     client: Option<QuicRelayClient>,
 }
@@ -492,23 +547,36 @@ impl ProviderAdapter for RpcedgeQuicRawTxAdapter {
             },
         };
         let request_id = Some(format!("{}-{}-{}", ctx.test_id, self.name, ctx.iteration));
+        let response_mode = self
+            .route_results
+            .then_some(ResponseMode::RouteResults);
         match client
-            .send_transaction_raw_bytes_with_request_id(tx, route_set, request_id)
+            .send_transaction_raw_bytes_with_request_id_and_response_mode(
+                tx,
+                route_set,
+                request_id,
+                response_mode,
+            )
             .await
         {
-            Ok(response) => ProviderAck {
-                provider_name: self.name().to_string(),
-                provider_kind: self.kind(),
-                accepted: response.accepted,
-                provider_request_id: Some(response.request_id),
-                returned_signature: Some(response.signature),
-                status_code: None,
-                error_class: None,
-                error: None,
-                send_started_at: started,
-                send_finished_at: Utc::now(),
-                ack_latency_us: timer.elapsed().as_micros(),
-            },
+            Ok(response) => {
+                let route_results = response.route_results.into_iter().map(Into::into).collect();
+                ProviderAck {
+                    provider_name: self.name().to_string(),
+                    provider_kind: self.kind(),
+                    accepted: response.accepted,
+                    provider_request_id: Some(response.request_id),
+                    returned_signature: Some(response.signature),
+                    status_code: None,
+                    error_class: None,
+                    error: None,
+                    send_started_at: started,
+                    send_finished_at: Utc::now(),
+                    ack_latency_us: timer.elapsed().as_micros(),
+                    route_results,
+                    route_results_complete: response.route_results_complete,
+                }
+            }
             Err(err) => ack_error(
                 self.name(),
                 self.kind(),
@@ -564,6 +632,8 @@ where
                             send_started_at: started,
                             send_finished_at: finished,
                             ack_latency_us: latency,
+                            route_results: Vec::new(),
+                            route_results_complete: None,
                         },
                         Err(err) => ProviderAck {
                             provider_name: name.to_string(),
@@ -577,6 +647,8 @@ where
                             send_started_at: started,
                             send_finished_at: finished,
                             ack_latency_us: latency,
+                            route_results: Vec::new(),
+                            route_results_complete: None,
                         },
                     }
                 }
@@ -640,6 +712,8 @@ async fn finish_response(
                     send_started_at: started,
                     send_finished_at: finished,
                     ack_latency_us: latency,
+                    route_results: Vec::new(),
+                    route_results_complete: None,
                 }
             } else {
                 ProviderAck {
@@ -654,6 +728,8 @@ async fn finish_response(
                     send_started_at: started,
                     send_finished_at: finished,
                     ack_latency_us: latency,
+                    route_results: Vec::new(),
+                    route_results_complete: None,
                 }
             }
         }
@@ -682,6 +758,8 @@ fn ack_error<E: std::fmt::Display>(
         send_started_at: started,
         send_finished_at: Utc::now(),
         ack_latency_us: timer.elapsed().as_micros(),
+        route_results: Vec::new(),
+        route_results_complete: None,
     }
 }
 

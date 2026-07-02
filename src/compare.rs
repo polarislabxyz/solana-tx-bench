@@ -30,6 +30,7 @@ pub struct ComparisonOutput {
     pub primary_source: String,
     pub run_count: usize,
     pub runs: Vec<RunComparisonSummary>,
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,6 +57,8 @@ pub struct RunComparisonSummary {
     pub avg_idx_in_block: Option<f64>,
     pub p90_idx_in_block: Option<f64>,
     pub avg_priority_fee_lamports: Option<f64>,
+    pub avg_route_tip_lamports: Option<f64>,
+    pub avg_total_spend_lamports: Option<f64>,
     pub max_slots: Option<i64>,
     pub min_slots: Option<i64>,
     pub same_slot_landed: usize,
@@ -111,6 +114,7 @@ pub fn generate_comparison(options: CompareOptions) -> Result<ComparisonOutput> 
         generated_at: Utc::now(),
         primary_source: options.primary_source,
         run_count: runs.len(),
+        warnings: comparison_warnings(&runs),
         runs,
     };
 
@@ -145,6 +149,35 @@ pub fn generate_comparison(options: CompareOptions) -> Result<ComparisonOutput> 
         .with_context(|| format!("write {}", options.output_dir.join("index.html").display()))?;
 
     Ok(output)
+}
+
+fn comparison_warnings(runs: &[RunComparisonSummary]) -> Vec<String> {
+    let mut warnings = Vec::new();
+    let priority_fee_values = runs
+        .iter()
+        .filter_map(|run| run.avg_priority_fee_lamports)
+        .map(|value| value.round() as u64)
+        .collect::<BTreeSet<_>>();
+
+    if priority_fee_values.len() > 1 {
+        warnings.push(
+            "Compared runs use different average priority fees. Treat this as exploratory; clean route-policy baselines must use the same compute-unit limit and compute-unit price in every arm.".to_string(),
+        );
+    }
+
+    let has_jito_route = runs.iter().any(|run| run.routes.contains("jito_bundle"));
+    if has_jito_route {
+        let has_route_tip = runs
+            .iter()
+            .any(|run| run.avg_route_tip_lamports.unwrap_or(0.0) > 0.0);
+        if !has_route_tip {
+            warnings.push(
+                "At least one compared run includes jito_bundle. Full economic cost is incomplete because no route-tip telemetry was present in the artifacts.".to_string(),
+            );
+        }
+    }
+
+    warnings
 }
 
 #[derive(Debug)]
@@ -282,6 +315,18 @@ fn load_run_from_inputs(
             ) as f64
         })
         .collect::<Vec<_>>();
+    let route_tips = samples
+        .iter()
+        .map(|sample| sample_route_tip_lamports(sample) as f64)
+        .collect::<Vec<_>>();
+    let total_spends = samples
+        .iter()
+        .map(|sample| {
+            sample
+                .estimated_spend_lamports
+                .saturating_add(sample_route_tip_lamports(sample)) as f64
+        })
+        .collect::<Vec<_>>();
     let block_seen = processed.count;
     let landed_runs = primary.count;
     let same_slot_landed = primary
@@ -313,6 +358,8 @@ fn load_run_from_inputs(
         avg_idx_in_block: avg_u64(&processed.slot_indexes),
         p90_idx_in_block: percentile_u64_as_f64(&processed.slot_indexes, 0.90),
         avg_priority_fee_lamports: avg(&priority_fees),
+        avg_route_tip_lamports: avg(&route_tips),
+        avg_total_spend_lamports: avg(&total_spends),
         max_slots: primary.slot_deltas.iter().max().copied(),
         min_slots: primary.slot_deltas.iter().min().copied(),
         same_slot_landed,
@@ -345,6 +392,14 @@ fn submitted_signature_count(
         signatures.extend(observations.iter().map(|event| event.signature.as_str()));
     }
     signatures.len()
+}
+
+fn sample_route_tip_lamports(sample: &BenchSample) -> u64 {
+    sample
+        .route_results
+        .iter()
+        .filter_map(|result| result.route_tip_lamports)
+        .sum()
 }
 
 fn read_ndjson<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<Vec<T>> {
@@ -664,12 +719,15 @@ fn comparison_markdown(output: &ComparisonOutput) -> String {
     ));
     out.push_str("## Methodology\n\n");
     out.push_str(methodology_text());
+    for warning in &output.warnings {
+        out.push_str(&format!("\n\n> **Warning:** {warning}"));
+    }
     out.push_str("\n\n## Comparison\n\n");
-    out.push_str("| Run | Routes | Avg First-Observed ms | P90 First-Observed ms | Avg Landed slots | P90 Landed slots | Avg Idx-in-Block | P90 Idx-in-Block | Avg Priority Fee | Max Slots | Min Slots | Same-slot landed | Landed runs | Block seen | Total runs | Success ratio % | Performance rate % |\n");
-    out.push_str("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
+    out.push_str("| Run | Routes | Avg First-Observed ms | P90 First-Observed ms | Avg Landed slots | P90 Landed slots | Avg Idx-in-Block | P90 Idx-in-Block | Avg Priority Fee | Avg Route Tip | Avg Total Spend | Max Slots | Min Slots | Same-slot landed | Landed runs | Block seen | Total runs | Success ratio % | Performance rate % |\n");
+    out.push_str("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
     for run in &output.runs {
         out.push_str(&format!(
-            "| `{}` | `{}` | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {:.2} | {:.2} |\n",
+            "| `{}` | `{}` | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {:.2} | {:.2} |\n",
             run.label,
             run.routes,
             fmt_f64(run.avg_landed_ms),
@@ -679,6 +737,8 @@ fn comparison_markdown(output: &ComparisonOutput) -> String {
             fmt_f64(run.avg_idx_in_block),
             fmt_f64(run.p90_idx_in_block),
             fmt_f64(run.avg_priority_fee_lamports),
+            fmt_f64(run.avg_route_tip_lamports),
+            fmt_f64(run.avg_total_spend_lamports),
             fmt_i64(run.max_slots),
             fmt_i64(run.min_slots),
             run.same_slot_landed,
@@ -781,11 +841,17 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.nowrap{white-space:no
         "<div class=\"note\">{}</div>",
         html_escape(methodology_text())
     ));
+    for warning in &output.warnings {
+        out.push_str(&format!(
+            "<div class=\"note\"><b>Warning:</b> {}</div>",
+            html_escape(warning)
+        ));
+    }
 
-    out.push_str("<h2>Comparison</h2><table><thead><tr><th>Run</th><th>Routes</th><th>Avg First-Observed ms</th><th>P90 First-Observed ms</th><th>Avg Landed slots</th><th>P90 Landed slots</th><th>Avg Idx</th><th>P90 Idx</th><th>Avg Priority Fee</th><th>Max Slots</th><th>Min Slots</th><th>Same-slot</th><th>Landed</th><th>Block seen</th><th>Total</th><th>Success %</th><th>Score %</th></tr></thead><tbody>");
+    out.push_str("<h2>Comparison</h2><table><thead><tr><th>Run</th><th>Routes</th><th>Avg First-Observed ms</th><th>P90 First-Observed ms</th><th>Avg Landed slots</th><th>P90 Landed slots</th><th>Avg Idx</th><th>P90 Idx</th><th>Avg Priority Fee</th><th>Avg Route Tip</th><th>Avg Total Spend</th><th>Max Slots</th><th>Min Slots</th><th>Same-slot</th><th>Landed</th><th>Block seen</th><th>Total</th><th>Success %</th><th>Score %</th></tr></thead><tbody>");
     for run in &output.runs {
         out.push_str(&format!(
-            "<tr><td class=\"left\"><code>{}</code></td><td class=\"left\"><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{:.2}</td><td><b>{:.2}</b></td></tr>",
+            "<tr><td class=\"left\"><code>{}</code></td><td class=\"left\"><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{:.2}</td><td><b>{:.2}</b></td></tr>",
             html_escape(&run.label),
             html_escape(&run.routes),
             fmt_f64(run.avg_landed_ms),
@@ -795,6 +861,8 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.nowrap{white-space:no
             fmt_f64(run.avg_idx_in_block),
             fmt_f64(run.p90_idx_in_block),
             fmt_f64(run.avg_priority_fee_lamports),
+            fmt_f64(run.avg_route_tip_lamports),
+            fmt_f64(run.avg_total_spend_lamports),
             fmt_i64(run.max_slots),
             fmt_i64(run.min_slots),
             run.same_slot_landed,

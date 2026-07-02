@@ -148,7 +148,6 @@ cargo run --release -- run-leader-paced \
   --leader-run-concurrency 3 \
   --slot-trigger grpc_slot \
   --route-strategy paired_route_policies \
-  --client-aware-harmonic-cu-price-microlamports 300000 \
   --capture-leader-slots \
   --collect-rpcedge
 ```
@@ -159,6 +158,16 @@ The paired arms are:
 - `always_race`: `only: [tpu_quic, jito_bundle, harmonic_bundle]`
 - `software_client_aware`: JitoLabs/BAM/FireBAM get TPU+Jito, Harmonic*
   gets TPU+Harmonic, everything else gets TPU-only.
+
+All paired baseline arms use the same compute-unit limit and the same
+compute-unit price from the config. Route policy must not silently mutate
+priority fee; fee ladders are separate experiments.
+
+Arms that include `jito_bundle` may pay relay-side Jito tips. Those tips are
+not included in `estimated_spend_lamports` unless route-tip telemetry is
+present. For RPCEdge QUIC benchmarks, set `route_results: true` on the provider
+to request bounded route-result ACKs; when returned, reports include
+route-added Jito tip cost in total spend columns.
 
 Individual strategies are route availability smoke tests only:
 
@@ -177,7 +186,6 @@ cargo run --release -- run-leader-paced \
   --duration-seconds 1800 \
   --slot-trigger grpc_slot \
   --route-strategy always_race \
-  --client-aware-harmonic-cu-price-microlamports 300000 \
   --capture-leader-slots \
   --collect-rpcedge
 
@@ -189,7 +197,6 @@ cargo run --release -- run-leader-paced \
   --duration-seconds 1800 \
   --slot-trigger grpc_slot \
   --route-strategy software_client_aware \
-  --client-aware-harmonic-cu-price-microlamports 300000 \
   --capture-leader-slots \
   --collect-rpcedge
 ```
@@ -198,6 +205,9 @@ Use the same transaction shape and observation endpoints for smoke tests, but
 only paired/matched-policy artifacts are valid for comparing submit-to-deshred,
 submit-to-processed, landed slot delta, processed block `slot_index`, success
 ratio, and extra priority/tip cost. Provider ACK latency is diagnostic only.
+Retries, delayed resends, and duplicate spam are intentionally excluded from
+baseline route-policy comparisons; benchmark those as separate tail-mitigation
+strategies.
 
 Leader-paced outputs add:
 

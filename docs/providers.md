@@ -79,6 +79,8 @@ overrides the route set per transaction using the scheduled leader's
 - `HarmonicAgave` / ID `10`: `tpu_quic + harmonic_bundle`
 - `HarmonicFiredancer` / ID `9`: `tpu_quic + harmonic_bundle`
 - `HarmonicFrankendancer` / ID `11`: `tpu_quic + harmonic_bundle`
+- `Rakurai` / ID `8` and `Raiku` by name/family:
+  `tpu_quic + jito_bundle + harmonic_bundle`
 - anything else or unknown: `tpu_quic`
 
 The selected route policy and selected route list are written to
@@ -115,9 +117,9 @@ signal. There is no Jito-style transfer to a tip account for Harmonic, and the
 current public docs do not state a fixed minimum priority-fee floor.
 
 Benchmark implication: configure the Harmonic CU price explicitly, record it in
-the manifest and samples, and treat live provider rejects as evidence. Do not
-document a fixed Harmonic minimum unless Harmonic publishes one or repeated live
-tests establish one.
+the config, keep that same CU price across every route-policy baseline arm, and
+treat live provider rejects as evidence. Do not document a fixed Harmonic
+minimum unless Harmonic publishes one or repeated live tests establish one.
 
 ## Jito Bundle Route
 
@@ -128,6 +130,48 @@ Jito tip-priority logic, not by the caller transaction's compute-unit price.
 Private RPCEdge route-attempt telemetry records the added tip signature,
 lamports, and account. Public benchmark artifacts should not assume exact Jito
 tip cost unless that route-attempt data or route-detailed ACK data is present.
+For QUIC benchmarks, set `route_results: true` on the `rpcedge_quic_raw_tx`
+provider to request bounded route-result ACKs. When the relay returns
+`route_tip_signature`, `route_tip_lamports`, and `route_tip_account`, reports
+include the route-added Jito tip in displayed total spend. If those fields are
+absent, arms that include `jito_bundle` can still be compared on landing
+quality, but their full economic cost is unknown.
+
+## Rakurai / Raiku
+
+Rakurai and Raiku leaders are not treated as a proven Jito or Harmonic
+integration. Current `software_client_aware` behavior routes them through
+`tpu_quic + jito_bundle + harmonic_bundle` as an explicit benchmark hypothesis:
+we want to measure whether either existing block-engine route helps before
+building a dedicated Rakurai adapter.
+
+Rakurai's public docs describe three relevant integration surfaces:
+
+- **Bundle support for block-engine partners**: a provider exposes a
+  block-engine endpoint list, Rakurai validators connect to the lowest-latency
+  endpoint, and bundles sent through that relationship must include a tip
+  transfer to a Rakurai-recognized tip account. This requires partner setup; it
+  is not the current RPCEdge `jito_bundle` route.
+- **Virtual priority for transactions or bundles**: include a plain SOL
+  transfer to one of Rakurai's tip accounts inside the transaction or bundle.
+  The tip is an additional scheduling signal on Rakurai leaders and is not a
+  replacement for regular priority fees.
+- **Post-pack confirmations**: Rakurai can stream near-final scheduled packets
+  to a configured gRPC endpoint using the Jito packet gRPC shape; consumers can
+  respond with bundles that include the original packet plus additional
+  transactions.
+
+Future adapters should be explicit:
+
+- `rakurai_virtual_priority`: add or require the Rakurai tip transfer and record
+  `rakurai_tip_lamports`, `rakurai_tip_account`, and the transaction signature.
+- `rakurai_bundle_partner`: submit bundles through a partner block-engine
+  integration and record bundle IDs, tip configuration, and provider ACKs.
+
+Do not label Rakurai as Jito in benchmark reports. If a Rakurai/Raiku leader is
+slow or fast today, the route list in the run manifest is the source of truth.
+`software_client_aware_jito_harmonic` means "generic TPU+Jito+Harmonic race for
+a Rakurai/Raiku leader", not a Rakurai-native route.
 
 ## Adding External Providers
 

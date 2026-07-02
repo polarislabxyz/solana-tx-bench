@@ -870,28 +870,21 @@ fn comparison_group_id_for(
 
 fn compute_unit_price_for_selection(
     config: &BenchConfig,
-    options: &LeaderPacedOptions,
-    route_selection: Option<&RouteSelection>,
+    _options: &LeaderPacedOptions,
+    _route_selection: Option<&RouteSelection>,
 ) -> u64 {
-    let uses_harmonic = route_selection
-        .map(|selection| {
-            selection
-                .routes
-                .iter()
-                .any(|route| route == "harmonic_bundle")
-        })
-        .unwrap_or(false);
-    if uses_harmonic {
-        options
-            .client_aware_harmonic_cu_price_microlamports
-            .unwrap_or(config.compute_unit_price_microlamports)
-    } else {
-        config.compute_unit_price_microlamports
-    }
+    // Route-policy baselines must keep fee settings uniform across all arms.
+    // The Harmonic override field is retained for a future explicit fee ladder.
+    config.compute_unit_price_microlamports
 }
 
 fn software_client_aware_routes(leader_metadata: &LeaderMetadata) -> Vec<&'static str> {
     let mut routes = vec!["tpu_quic"];
+    if is_rakurai_software_client(leader_metadata) {
+        routes.push("jito_bundle");
+        routes.push("harmonic_bundle");
+        return routes;
+    }
     if is_jito_software_client(leader_metadata) {
         routes.push("jito_bundle");
     }
@@ -919,6 +912,26 @@ fn is_harmonic_software_client(leader_metadata: &LeaderMetadata) -> bool {
             .software_client
             .as_deref()
             .map(|value| value.to_ascii_lowercase().contains("harmonic"))
+            .unwrap_or(false)
+}
+
+fn is_rakurai_software_client(leader_metadata: &LeaderMetadata) -> bool {
+    matches!(leader_metadata.software_client_id, Some(8))
+        || leader_metadata
+            .software_client
+            .as_deref()
+            .map(|value| {
+                let value = value.to_ascii_lowercase();
+                value.contains("rakurai") || value.contains("raiku")
+            })
+            .unwrap_or(false)
+        || leader_metadata
+            .client_family
+            .as_deref()
+            .map(|value| {
+                let value = value.to_ascii_lowercase();
+                value.contains("rakurai") || value.contains("raiku")
+            })
             .unwrap_or(false)
 }
 
@@ -1149,6 +1162,40 @@ mod tests {
     }
 
     #[test]
+    fn software_client_aware_routes_rakurai_to_full_block_engine_race() {
+        let metadata = LeaderMetadata {
+            client_family: Some("rakurai".to_string()),
+            software_client: Some("Rakurai".to_string()),
+            software_client_id: Some(8),
+        };
+        let selection =
+            route_selection_for_strategy(LeaderPacedRouteStrategy::SoftwareClientAware, &metadata)
+                .expect("selection");
+        assert_eq!(selection.policy, "software_client_aware_jito_harmonic");
+        assert_eq!(
+            selection.routes,
+            vec!["tpu_quic", "jito_bundle", "harmonic_bundle"]
+        );
+    }
+
+    #[test]
+    fn software_client_aware_routes_raiku_to_full_block_engine_race() {
+        let metadata = LeaderMetadata {
+            client_family: Some("raiku".to_string()),
+            software_client: Some("Raiku".to_string()),
+            software_client_id: None,
+        };
+        let selection =
+            route_selection_for_strategy(LeaderPacedRouteStrategy::SoftwareClientAware, &metadata)
+                .expect("selection");
+        assert_eq!(selection.policy, "software_client_aware_jito_harmonic");
+        assert_eq!(
+            selection.routes,
+            vec!["tpu_quic", "jito_bundle", "harmonic_bundle"]
+        );
+    }
+
+    #[test]
     fn software_client_aware_routes_plain_agave_to_tpu_only() {
         let metadata = LeaderMetadata {
             client_family: Some("agave".to_string()),
@@ -1226,7 +1273,31 @@ mod tests {
     }
 
     #[test]
-    fn harmonic_route_selection_uses_configured_cu_price() {
+    fn paired_policy_arms_route_rakurai_software_arm_to_full_block_engine_race() {
+        let metadata = LeaderMetadata {
+            client_family: Some("rakurai".to_string()),
+            software_client: Some("Rakurai".to_string()),
+            software_client_id: Some(8),
+        };
+        let arms = policy_arms_for_strategy(
+            LeaderPacedRouteStrategy::PairedRoutePolicies,
+            &metadata,
+            Some("group-rakurai".to_string()),
+        );
+        let software = arms
+            .iter()
+            .find(|arm| arm.policy_arm.as_deref() == Some("software_client_aware"))
+            .expect("software arm");
+        let selection = software.route_selection.as_ref().expect("selection");
+        assert_eq!(selection.policy, "software_client_aware_jito_harmonic");
+        assert_eq!(
+            selection.routes,
+            vec!["tpu_quic", "jito_bundle", "harmonic_bundle"]
+        );
+    }
+
+    #[test]
+    fn route_selection_keeps_uniform_configured_cu_price() {
         let config = BenchConfig {
             compute_unit_price_microlamports: 0,
             ..BenchConfig::default()
@@ -1248,7 +1319,7 @@ mod tests {
         let selection = RouteSelection::only("always_race", ["tpu_quic", "harmonic_bundle"]);
         assert_eq!(
             compute_unit_price_for_selection(&config, &options, Some(&selection)),
-            300_000
+            0
         );
         let selection = RouteSelection::only("tpu_quic_only", ["tpu_quic"]);
         assert_eq!(

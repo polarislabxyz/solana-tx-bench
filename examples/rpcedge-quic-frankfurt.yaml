@@ -20,4 +20,5 @@ providers:
     route_mode: only
     routes:
       - tpu_quic
+    route_results: true
     server_name: "relay.rpcedge.com"

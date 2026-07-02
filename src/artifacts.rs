@@ -1,4 +1,4 @@
-use crate::adapters::{ProviderAck, ProviderKind, RouteSelection};
+use crate::adapters::{ProviderAck, ProviderKind, RouteResultAck, RouteSelection};
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -74,6 +74,10 @@ pub struct BenchSample {
     pub compute_unit_limit: u32,
     pub compute_unit_price_microlamports: u64,
     pub estimated_spend_lamports: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub route_results: Vec<RouteResultAck>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route_results_complete: Option<bool>,
 }
 
 impl BenchSample {
@@ -97,7 +101,7 @@ impl BenchSample {
         ack: ProviderAck,
     ) -> Self {
         Self {
-            schema_version: 3,
+            schema_version: 4,
             test_id: test_id.to_string(),
             iteration,
             signature,
@@ -129,6 +133,8 @@ impl BenchSample {
             compute_unit_limit,
             compute_unit_price_microlamports,
             estimated_spend_lamports,
+            route_results: ack.route_results,
+            route_results_complete: ack.route_results_complete,
         }
     }
 }
