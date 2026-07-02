@@ -1,5 +1,6 @@
 use crate::{
     artifacts::{BenchManifest, BenchSample},
+    cost::priority_fee_lamports,
     leader_paced::LeaderSendEvent,
     observations::ObservationEvent,
 };
@@ -56,8 +57,16 @@ pub struct RunComparisonSummary {
     pub p90_landed_slots: Option<f64>,
     pub avg_idx_in_block: Option<f64>,
     pub p90_idx_in_block: Option<f64>,
+    pub avg_base_fee_lamports: Option<f64>,
     pub avg_priority_fee_lamports: Option<f64>,
+    pub avg_transaction_fee_lamports: Option<f64>,
+    pub avg_route_tip_generated_lamports: Option<f64>,
+    pub avg_route_tip_landed_lamports: Option<f64>,
+    pub avg_total_generated_spend_lamports: Option<f64>,
+    pub avg_total_landed_spend_lamports: Option<f64>,
+    /// Deprecated compatibility alias for generated route tips.
     pub avg_route_tip_lamports: Option<f64>,
+    /// Deprecated compatibility alias for generated total spend.
     pub avg_total_spend_lamports: Option<f64>,
     pub max_slots: Option<i64>,
     pub min_slots: Option<i64>,
@@ -169,10 +178,23 @@ fn comparison_warnings(runs: &[RunComparisonSummary]) -> Vec<String> {
     if has_jito_route {
         let has_route_tip = runs
             .iter()
-            .any(|run| run.avg_route_tip_lamports.unwrap_or(0.0) > 0.0);
+            .any(|run| run.avg_route_tip_generated_lamports.unwrap_or(0.0) > 0.0);
         if !has_route_tip {
             warnings.push(
                 "At least one compared run includes jito_bundle. Full economic cost is incomplete because no route-tip telemetry was present in the artifacts.".to_string(),
+            );
+        }
+        let generated_tip = runs
+            .iter()
+            .map(|run| run.avg_route_tip_generated_lamports.unwrap_or(0.0))
+            .sum::<f64>();
+        let landed_tip = runs
+            .iter()
+            .map(|run| run.avg_route_tip_landed_lamports.unwrap_or(0.0))
+            .sum::<f64>();
+        if generated_tip > 0.0 && landed_tip <= 0.0 {
+            warnings.push(
+                "Jito route-tip signatures were returned by the relay, but none were observed in matched streams. Add the relay Jito tip accounts with --observation-account to count landed route-tip spend.".to_string(),
             );
         }
     }
@@ -225,7 +247,14 @@ fn load_runs(
                         .collect(),
                     observations: observations
                         .iter()
-                        .filter(|event| signatures.contains(&event.signature))
+                        .filter(|event| {
+                            signatures.contains(
+                                event
+                                    .caller_signature
+                                    .as_deref()
+                                    .unwrap_or(&event.signature),
+                            )
+                        })
                         .cloned()
                         .collect(),
                     manifest: manifest.clone(),
@@ -290,10 +319,24 @@ fn load_run_from_inputs(
         .map(|send| (send.signature.clone(), send))
         .collect::<BTreeMap<_, _>>();
 
-    let primary_source = select_source(&observations, requested_primary_source);
-    let primary = source_stats(&observations, &send_by_signature, &primary_source);
-    let deshred = source_stats(&observations, &send_by_signature, "rpcedge_deshred");
-    let processed = source_stats(&observations, &send_by_signature, "rpcedge_processed");
+    let caller_observations = observations
+        .iter()
+        .filter(|event| !is_route_tip_observation(event))
+        .cloned()
+        .collect::<Vec<_>>();
+    let observed_signatures = observations
+        .iter()
+        .map(|event| event.signature.clone())
+        .collect::<BTreeSet<_>>();
+
+    let primary_source = select_source(&caller_observations, requested_primary_source);
+    let primary = source_stats(&caller_observations, &send_by_signature, &primary_source);
+    let deshred = source_stats(&caller_observations, &send_by_signature, "rpcedge_deshred");
+    let processed = source_stats(
+        &caller_observations,
+        &send_by_signature,
+        "rpcedge_processed",
+    );
 
     let mut ack_latencies_ms = samples
         .iter()
@@ -302,30 +345,38 @@ fn load_run_from_inputs(
         .collect::<Vec<_>>();
     ack_latencies_ms.sort_by(f64::total_cmp);
 
-    let total_runs = submitted_signature_count(&samples, &sends, &observations);
+    let total_runs = submitted_signature_count(&samples, &sends, &caller_observations);
     let accepted = samples.iter().filter(|sample| sample.accepted).count();
     let errors = samples.len().saturating_sub(accepted);
 
-    let priority_fees = sends
+    let cost_rows = cost_rows(&samples, &sends, &observed_signatures);
+    let base_fees = cost_rows
         .iter()
-        .map(|send| {
-            priority_fee_lamports(
-                send.compute_unit_limit,
-                send.compute_unit_price_microlamports,
-            ) as f64
-        })
+        .map(|cost| cost.base_fee_lamports as f64)
         .collect::<Vec<_>>();
-    let route_tips = samples
+    let priority_fees = cost_rows
         .iter()
-        .map(|sample| sample_route_tip_lamports(sample) as f64)
+        .map(|cost| cost.priority_fee_lamports as f64)
         .collect::<Vec<_>>();
-    let total_spends = samples
+    let transaction_fees = cost_rows
         .iter()
-        .map(|sample| {
-            sample
-                .estimated_spend_lamports
-                .saturating_add(sample_route_tip_lamports(sample)) as f64
-        })
+        .map(|cost| cost.transaction_fee_lamports as f64)
+        .collect::<Vec<_>>();
+    let route_tips_generated = cost_rows
+        .iter()
+        .map(|cost| cost.route_tip_generated_lamports as f64)
+        .collect::<Vec<_>>();
+    let route_tips_landed = cost_rows
+        .iter()
+        .map(|cost| cost.route_tip_landed_lamports as f64)
+        .collect::<Vec<_>>();
+    let total_generated_spends = cost_rows
+        .iter()
+        .map(|cost| cost.total_generated_spend_lamports as f64)
+        .collect::<Vec<_>>();
+    let total_landed_spends = cost_rows
+        .iter()
+        .map(|cost| cost.total_landed_spend_lamports as f64)
         .collect::<Vec<_>>();
     let block_seen = processed.count;
     let landed_runs = primary.count;
@@ -357,9 +408,15 @@ fn load_run_from_inputs(
         p90_landed_slots: percentile_i64_as_f64(&primary.slot_deltas, 0.90),
         avg_idx_in_block: avg_u64(&processed.slot_indexes),
         p90_idx_in_block: percentile_u64_as_f64(&processed.slot_indexes, 0.90),
+        avg_base_fee_lamports: avg(&base_fees),
         avg_priority_fee_lamports: avg(&priority_fees),
-        avg_route_tip_lamports: avg(&route_tips),
-        avg_total_spend_lamports: avg(&total_spends),
+        avg_transaction_fee_lamports: avg(&transaction_fees),
+        avg_route_tip_generated_lamports: avg(&route_tips_generated),
+        avg_route_tip_landed_lamports: avg(&route_tips_landed),
+        avg_total_generated_spend_lamports: avg(&total_generated_spends),
+        avg_total_landed_spend_lamports: avg(&total_landed_spends),
+        avg_route_tip_lamports: avg(&route_tips_generated),
+        avg_total_spend_lamports: avg(&total_generated_spends),
         max_slots: primary.slot_deltas.iter().max().copied(),
         min_slots: primary.slot_deltas.iter().min().copied(),
         same_slot_landed,
@@ -394,12 +451,131 @@ fn submitted_signature_count(
     signatures.len()
 }
 
-fn sample_route_tip_lamports(sample: &BenchSample) -> u64 {
-    sample
-        .route_results
+#[derive(Debug, Clone, Default)]
+struct CostRow {
+    base_fee_lamports: u64,
+    priority_fee_lamports: u64,
+    transaction_fee_lamports: u64,
+    route_tip_generated_lamports: u64,
+    route_tip_landed_lamports: u64,
+    total_generated_spend_lamports: u64,
+    total_landed_spend_lamports: u64,
+}
+
+fn cost_rows(
+    samples: &[BenchSample],
+    sends: &[LeaderSendEvent],
+    observed_signatures: &BTreeSet<String>,
+) -> Vec<CostRow> {
+    let mut sample_by_signature = BTreeMap::<String, Vec<&BenchSample>>::new();
+    for sample in samples {
+        sample_by_signature
+            .entry(sample.signature.clone())
+            .or_default()
+            .push(sample);
+    }
+
+    let mut signatures = sends
         .iter()
-        .filter_map(|result| result.route_tip_lamports)
-        .sum()
+        .map(|send| send.signature.clone())
+        .collect::<BTreeSet<_>>();
+    signatures.extend(sample_by_signature.keys().cloned());
+
+    signatures
+        .into_iter()
+        .map(|signature| {
+            let send = sends.iter().find(|send| send.signature == signature);
+            let sample = sample_by_signature
+                .get(&signature)
+                .and_then(|rows| rows.first().copied());
+
+            let base_fee_lamports = send
+                .map(|send| send.base_fee_lamports)
+                .filter(|value| *value > 0)
+                .or_else(|| {
+                    sample
+                        .map(|sample| sample.base_fee_lamports)
+                        .filter(|value| *value > 0)
+                })
+                .unwrap_or(5_000);
+            let priority_fee_lamports = send
+                .map(|send| send.priority_fee_lamports)
+                .filter(|value| *value > 0)
+                .or_else(|| {
+                    sample
+                        .map(|sample| sample.priority_fee_lamports)
+                        .filter(|value| *value > 0)
+                })
+                .unwrap_or_else(|| {
+                    let (limit, price) = send
+                        .map(|send| {
+                            (
+                                send.compute_unit_limit,
+                                send.compute_unit_price_microlamports,
+                            )
+                        })
+                        .or_else(|| {
+                            sample.map(|sample| {
+                                (
+                                    sample.compute_unit_limit,
+                                    sample.compute_unit_price_microlamports,
+                                )
+                            })
+                        })
+                        .unwrap_or((0, 0));
+                    priority_fee_lamports(limit, price)
+                });
+            let transaction_fee_lamports = send
+                .map(|send| send.transaction_fee_lamports)
+                .filter(|value| *value > 0)
+                .or_else(|| {
+                    sample
+                        .map(|sample| sample.transaction_fee_lamports)
+                        .filter(|value| *value > 0)
+                })
+                .unwrap_or_else(|| base_fee_lamports.saturating_add(priority_fee_lamports));
+
+            let mut route_tip_generated_lamports = 0_u64;
+            let mut route_tip_landed_lamports = 0_u64;
+            if let Some(samples) = sample_by_signature.get(&signature) {
+                for sample in samples {
+                    for result in &sample.route_results {
+                        let lamports = result.route_tip_lamports.unwrap_or(0);
+                        if lamports == 0 {
+                            continue;
+                        }
+                        route_tip_generated_lamports =
+                            route_tip_generated_lamports.saturating_add(lamports);
+                        if result
+                            .route_tip_signature
+                            .as_ref()
+                            .map(|signature| observed_signatures.contains(signature))
+                            .unwrap_or(false)
+                        {
+                            route_tip_landed_lamports =
+                                route_tip_landed_lamports.saturating_add(lamports);
+                        }
+                    }
+                }
+            }
+
+            CostRow {
+                base_fee_lamports,
+                priority_fee_lamports,
+                transaction_fee_lamports,
+                route_tip_generated_lamports,
+                route_tip_landed_lamports,
+                total_generated_spend_lamports: transaction_fee_lamports
+                    .saturating_add(route_tip_generated_lamports),
+                total_landed_spend_lamports: transaction_fee_lamports
+                    .saturating_add(route_tip_landed_lamports),
+            }
+        })
+        .collect()
+}
+
+fn is_route_tip_observation(event: &ObservationEvent) -> bool {
+    event.signature_role.as_deref() == Some("route_tip")
 }
 
 fn read_ndjson<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<Vec<T>> {
@@ -562,13 +738,6 @@ fn routes_summary(samples: &[BenchSample], manifest: Option<&BenchManifest>) -> 
         .join(", ")
 }
 
-fn priority_fee_lamports(cu_limit: u32, cu_price_microlamports: u64) -> u64 {
-    (cu_limit as u64)
-        .saturating_mul(cu_price_microlamports)
-        .saturating_add(999_999)
-        / 1_000_000
-}
-
 fn apply_scores(runs: &mut [RunComparisonSummary]) {
     let best_avg_landed_ms = min_present(runs.iter().filter_map(|run| run.avg_landed_ms));
     let best_p90_landed_ms = min_present(runs.iter().filter_map(|run| run.p90_landed_ms));
@@ -723,11 +892,11 @@ fn comparison_markdown(output: &ComparisonOutput) -> String {
         out.push_str(&format!("\n\n> **Warning:** {warning}"));
     }
     out.push_str("\n\n## Comparison\n\n");
-    out.push_str("| Run | Routes | Avg First-Observed ms | P90 First-Observed ms | Avg Landed slots | P90 Landed slots | Avg Idx-in-Block | P90 Idx-in-Block | Avg Priority Fee | Avg Route Tip | Avg Total Spend | Max Slots | Min Slots | Same-slot landed | Landed runs | Block seen | Total runs | Success ratio % | Performance rate % |\n");
-    out.push_str("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
+    out.push_str("| Run | Routes | Avg First-Observed ms | P90 First-Observed ms | Avg Landed slots | P90 Landed slots | Avg Idx-in-Block | P90 Idx-in-Block | Avg Base Fee | Avg Priority Fee | Avg Tx Fee | Avg Route Tip Generated | Avg Route Tip Landed | Avg Total Generated | Avg Total Landed | Max Slots | Min Slots | Same-slot landed | Landed runs | Block seen | Total runs | Success ratio % | Performance rate % |\n");
+    out.push_str("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
     for run in &output.runs {
         out.push_str(&format!(
-            "| `{}` | `{}` | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {:.2} | {:.2} |\n",
+            "| `{}` | `{}` | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {:.2} | {:.2} |\n",
             run.label,
             run.routes,
             fmt_f64(run.avg_landed_ms),
@@ -736,9 +905,13 @@ fn comparison_markdown(output: &ComparisonOutput) -> String {
             fmt_f64(run.p90_landed_slots),
             fmt_f64(run.avg_idx_in_block),
             fmt_f64(run.p90_idx_in_block),
+            fmt_f64(run.avg_base_fee_lamports),
             fmt_f64(run.avg_priority_fee_lamports),
-            fmt_f64(run.avg_route_tip_lamports),
-            fmt_f64(run.avg_total_spend_lamports),
+            fmt_f64(run.avg_transaction_fee_lamports),
+            fmt_f64(run.avg_route_tip_generated_lamports),
+            fmt_f64(run.avg_route_tip_landed_lamports),
+            fmt_f64(run.avg_total_generated_spend_lamports),
+            fmt_f64(run.avg_total_landed_spend_lamports),
             fmt_i64(run.max_slots),
             fmt_i64(run.min_slots),
             run.same_slot_landed,
@@ -770,7 +943,7 @@ fn comparison_markdown(output: &ComparisonOutput) -> String {
 }
 
 fn methodology_text() -> &'static str {
-    "Landing proof comes from matched observations by transaction signature, not provider ACK. By default, landing latency uses the first observed stream event for each signature; processed metadata is still used for block position because deshred observations do not carry a transaction index. Lower-is-better metrics are normalized relative to the best run in the comparison set. Landing latency and landed slots weight p90 at 80% and average at 20%. Block position weights average and p90 equally. Same-slot and success use rates so runs with different counts remain comparable. The final performance rate is the unweighted average of the five bucket scores. Only compare runs with the same transaction shape, trigger mode, sender region, and fee/tip policy; otherwise treat the score as descriptive rather than a claim."
+    "Landing proof comes from matched observations by transaction signature, not provider ACK. By default, landing latency uses the first observed stream event for each caller transaction; processed metadata is still used for block position because deshred observations do not carry a transaction index. Cost columns separate deterministic transaction fees from route-added tips: base fee and priority fee are encoded in the signed transaction, generated route tips come from route-result ACK metadata, and landed route tips count only tip signatures observed in the matched streams. Lower-is-better metrics are normalized relative to the best run in the comparison set. Landing latency and landed slots weight p90 at 80% and average at 20%. Block position weights average and p90 equally. Same-slot and success use rates so runs with different counts remain comparable. The final performance rate is the unweighted average of the five bucket scores. Only compare runs with the same transaction shape, trigger mode, sender region, and fee/tip policy; otherwise treat the score as descriptive rather than a claim."
 }
 
 fn comparison_html(output: &ComparisonOutput) -> String {
@@ -848,10 +1021,10 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.nowrap{white-space:no
         ));
     }
 
-    out.push_str("<h2>Comparison</h2><table><thead><tr><th>Run</th><th>Routes</th><th>Avg First-Observed ms</th><th>P90 First-Observed ms</th><th>Avg Landed slots</th><th>P90 Landed slots</th><th>Avg Idx</th><th>P90 Idx</th><th>Avg Priority Fee</th><th>Avg Route Tip</th><th>Avg Total Spend</th><th>Max Slots</th><th>Min Slots</th><th>Same-slot</th><th>Landed</th><th>Block seen</th><th>Total</th><th>Success %</th><th>Score %</th></tr></thead><tbody>");
+    out.push_str("<h2>Comparison</h2><table><thead><tr><th>Run</th><th>Routes</th><th>Avg First-Observed ms</th><th>P90 First-Observed ms</th><th>Avg Landed slots</th><th>P90 Landed slots</th><th>Avg Idx</th><th>P90 Idx</th><th>Avg Base Fee</th><th>Avg Priority Fee</th><th>Avg Tx Fee</th><th>Avg Route Tip Generated</th><th>Avg Route Tip Landed</th><th>Avg Total Generated</th><th>Avg Total Landed</th><th>Max Slots</th><th>Min Slots</th><th>Same-slot</th><th>Landed</th><th>Block seen</th><th>Total</th><th>Success %</th><th>Score %</th></tr></thead><tbody>");
     for run in &output.runs {
         out.push_str(&format!(
-            "<tr><td class=\"left\"><code>{}</code></td><td class=\"left\"><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{:.2}</td><td><b>{:.2}</b></td></tr>",
+            "<tr><td class=\"left\"><code>{}</code></td><td class=\"left\"><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{:.2}</td><td><b>{:.2}</b></td></tr>",
             html_escape(&run.label),
             html_escape(&run.routes),
             fmt_f64(run.avg_landed_ms),
@@ -860,9 +1033,13 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.nowrap{white-space:no
             fmt_f64(run.p90_landed_slots),
             fmt_f64(run.avg_idx_in_block),
             fmt_f64(run.p90_idx_in_block),
+            fmt_f64(run.avg_base_fee_lamports),
             fmt_f64(run.avg_priority_fee_lamports),
-            fmt_f64(run.avg_route_tip_lamports),
-            fmt_f64(run.avg_total_spend_lamports),
+            fmt_f64(run.avg_transaction_fee_lamports),
+            fmt_f64(run.avg_route_tip_generated_lamports),
+            fmt_f64(run.avg_route_tip_landed_lamports),
+            fmt_f64(run.avg_total_generated_spend_lamports),
+            fmt_f64(run.avg_total_landed_spend_lamports),
             fmt_i64(run.max_slots),
             fmt_i64(run.min_slots),
             run.same_slot_landed,

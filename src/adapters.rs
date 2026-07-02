@@ -4,8 +4,8 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use chrono::{DateTime, Utc};
 use reqwest::StatusCode;
 use rpcedge_relay_client::{
-    QuicRelayClient, QuicRelayClientConfig, RelayRoute,
-    RouteResultResponse as RelayRouteResultResponse, ResponseMode, RouteSet as RelayRouteSet,
+    QuicRelayClient, QuicRelayClientConfig, RelayRoute, ResponseMode,
+    RouteResultResponse as RelayRouteResultResponse, RouteSet as RelayRouteSet,
     RouteSetMode as RelayRouteSetMode,
 };
 use serde::{Deserialize, Serialize};
@@ -547,9 +547,7 @@ impl ProviderAdapter for RpcedgeQuicRawTxAdapter {
             },
         };
         let request_id = Some(format!("{}-{}-{}", ctx.test_id, self.name, ctx.iteration));
-        let response_mode = self
-            .route_results
-            .then_some(ResponseMode::RouteResults);
+        let response_mode = self.route_results.then_some(ResponseMode::RouteResults);
         match client
             .send_transaction_raw_bytes_with_request_id_and_response_mode(
                 tx,

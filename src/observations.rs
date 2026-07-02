@@ -15,6 +15,10 @@ pub struct ObservationEvent {
     pub schema_version: u32,
     pub test_id: String,
     pub signature: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature_role: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub caller_signature: Option<String>,
     pub source_name: String,
     pub source_kind: ObservationSourceKind,
     pub observed_at: DateTime<Utc>,
@@ -301,6 +305,8 @@ mod tests {
             schema_version: 1,
             test_id: "test".to_string(),
             signature: signature.to_string(),
+            signature_role: None,
+            caller_signature: None,
             source_name: source_name.to_string(),
             source_kind,
             observed_at: submitted_at + chrono::Duration::microseconds(us),

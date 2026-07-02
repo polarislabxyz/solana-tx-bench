@@ -164,10 +164,13 @@ compute-unit price from the config. Route policy must not silently mutate
 priority fee; fee ladders are separate experiments.
 
 Arms that include `jito_bundle` may pay relay-side Jito tips. Those tips are
-not included in `estimated_spend_lamports` unless route-tip telemetry is
-present. For RPCEdge QUIC benchmarks, set `route_results: true` on the provider
-to request bounded route-result ACKs; when returned, reports include
-route-added Jito tip cost in total spend columns.
+tracked separately from the signed transaction fee. For RPCEdge QUIC
+benchmarks, set `route_results: true` on the provider to request bounded
+route-result ACKs. When returned, reports show route-tip generated spend from
+`route_tip_lamports`, and route-tip landed spend only when the corresponding
+`route_tip_signature` is observed by the benchmark streams. Pass known relay
+tip accounts with `--observation-account <pubkey>` so the stream subscription
+can see those tip transactions.
 
 Individual strategies are route availability smoke tests only:
 

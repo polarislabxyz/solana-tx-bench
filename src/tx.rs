@@ -1,3 +1,4 @@
+use crate::cost::TransactionCost;
 use anyhow::{bail, Context, Result};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use solana_client::rpc_client::RpcClient;
@@ -10,8 +11,6 @@ use solana_sdk::{
 };
 use solana_system_interface::instruction as system_instruction;
 use std::path::Path;
-
-const BASE_SIGNATURE_FEE_LAMPORTS: u64 = 5_000;
 
 #[derive(Debug, Clone)]
 pub struct TxBuildConfig {
@@ -27,6 +26,11 @@ pub struct BenchTx {
     pub signature: Signature,
     pub raw: Vec<u8>,
     pub base64: String,
+    pub base_fee_lamports: u64,
+    pub priority_fee_lamports: u64,
+    pub transaction_fee_lamports: u64,
+    /// Deprecated compatibility alias for the signed transaction fee only.
+    /// Route-added tips are tracked separately from route result metadata.
     pub estimated_spend_lamports: u64,
 }
 
@@ -39,12 +43,8 @@ pub fn estimate_spend_lamports(
     compute_unit_price_microlamports: u64,
     route_tip_lamports: u64,
 ) -> u64 {
-    let priority_fee = (compute_unit_limit as u64)
-        .saturating_mul(compute_unit_price_microlamports)
-        .saturating_add(999_999)
-        / 1_000_000;
-    BASE_SIGNATURE_FEE_LAMPORTS
-        .saturating_add(priority_fee)
+    TransactionCost::one_signature(compute_unit_limit, compute_unit_price_microlamports)
+        .transaction_fee_lamports
         .saturating_add(route_tip_lamports)
 }
 
@@ -71,7 +71,7 @@ pub fn build_transactions_with_blockhash(
     let mut out = Vec::with_capacity(count);
     let mut estimated_total = 0_u64;
     for iteration in 0..count {
-        let estimated_spend = estimated_transaction_spend(config);
+        let estimated_spend = transaction_cost(config).transaction_fee_lamports;
         if let Some(max) = max_spend_lamports {
             if estimated_total.saturating_add(estimated_spend) > max {
                 bail!(
@@ -118,6 +118,11 @@ pub fn build_transaction_with_blockhash(
         &[payer],
         blockhash,
     );
+    let cost = TransactionCost::for_signature_count(
+        tx.signatures.len() as u64,
+        config.compute_unit_limit,
+        config.compute_unit_price_microlamports,
+    );
     let raw = bincode::serialize(&tx).context("serialize transaction")?;
     let base64 = STANDARD.encode(&raw);
     Ok(BenchTx {
@@ -125,16 +130,29 @@ pub fn build_transaction_with_blockhash(
         signature: tx.signatures[0],
         raw,
         base64,
-        estimated_spend_lamports: estimated_transaction_spend(config),
+        base_fee_lamports: cost.base_fee_lamports,
+        priority_fee_lamports: cost.priority_fee_lamports,
+        transaction_fee_lamports: cost.transaction_fee_lamports,
+        estimated_spend_lamports: cost.transaction_fee_lamports,
     })
 }
 
 pub fn estimated_transaction_spend(config: &TxBuildConfig) -> u64 {
-    estimate_spend_lamports(
+    transaction_cost(config).transaction_fee_lamports
+}
+
+pub fn transaction_cost(config: &TxBuildConfig) -> TransactionCost {
+    TransactionCost::one_signature(
         config.compute_unit_limit,
         config.compute_unit_price_microlamports,
-        0,
     )
+}
+
+pub fn transaction_cost_from_fields(
+    compute_unit_limit: u32,
+    compute_unit_price_microlamports: u64,
+) -> TransactionCost {
+    TransactionCost::one_signature(compute_unit_limit, compute_unit_price_microlamports)
 }
 
 #[cfg(test)]
@@ -191,5 +209,20 @@ mod tests {
             build_transactions_with_blockhash(&config, &payer, 2, Some(one_tx), Hash::new_unique())
                 .expect_err("cap should reject second tx");
         assert!(err.to_string().contains("spend cap exceeded"));
+    }
+
+    #[test]
+    fn transaction_cost_splits_base_and_priority_fee() {
+        let config = TxBuildConfig {
+            rpc_url: "http://127.0.0.1:8899".to_string(),
+            lamports: 1,
+            compute_unit_limit: 660,
+            compute_unit_price_microlamports: 300_000,
+        };
+        let cost = transaction_cost(&config);
+        assert_eq!(cost.base_fee_lamports, 5_000);
+        assert_eq!(cost.priority_fee_lamports, 198);
+        assert_eq!(cost.transaction_fee_lamports, 5_198);
+        assert_eq!(crate::cost::priority_fee_lamports(660, 300_000), 198);
     }
 }

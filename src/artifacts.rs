@@ -18,7 +18,9 @@ pub struct BenchManifest {
     pub duration_seconds: Option<u64>,
     pub rate_per_second: Option<f64>,
     pub lamports: u64,
+    #[serde(default)]
     pub compute_unit_limit: u32,
+    #[serde(default)]
     pub compute_unit_price_microlamports: u64,
     pub memo_prefix: String,
     pub max_spend_lamports: Option<u64>,
@@ -65,14 +67,26 @@ pub struct BenchSample {
     pub error: Option<String>,
     pub route_policy: Option<String>,
     pub route_mode: Option<String>,
+    #[serde(default)]
     pub selected_routes: Vec<String>,
     pub leader_client_family: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leader_software_client: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leader_software_client_id: Option<u16>,
+    #[serde(default)]
     pub compute_unit_limit: u32,
+    #[serde(default)]
     pub compute_unit_price_microlamports: u64,
+    #[serde(default)]
+    pub base_fee_lamports: u64,
+    #[serde(default)]
+    pub priority_fee_lamports: u64,
+    #[serde(default)]
+    pub transaction_fee_lamports: u64,
+    /// Deprecated compatibility alias for `transaction_fee_lamports`.
+    /// Route-added tips are represented by `route_results`.
+    #[serde(default)]
     pub estimated_spend_lamports: u64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub route_results: Vec<RouteResultAck>,
@@ -97,6 +111,9 @@ impl BenchSample {
         leader_software_client_id: Option<u16>,
         compute_unit_limit: u32,
         compute_unit_price_microlamports: u64,
+        base_fee_lamports: u64,
+        priority_fee_lamports: u64,
+        transaction_fee_lamports: u64,
         estimated_spend_lamports: u64,
         ack: ProviderAck,
     ) -> Self {
@@ -132,6 +149,9 @@ impl BenchSample {
             leader_software_client_id,
             compute_unit_limit,
             compute_unit_price_microlamports,
+            base_fee_lamports,
+            priority_fee_lamports,
+            transaction_fee_lamports,
             estimated_spend_lamports,
             route_results: ack.route_results,
             route_results_complete: ack.route_results_complete,

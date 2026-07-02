@@ -95,6 +95,7 @@ pub struct LeaderPacedOptions {
     pub route_strategy: LeaderPacedRouteStrategy,
     pub client_aware_harmonic_cu_price_microlamports: Option<u64>,
     pub trigger: LeaderPacedTrigger,
+    pub extra_observation_accounts: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -132,6 +133,7 @@ pub struct LeaderSendEvent {
     pub leader_run_end_slot: u64,
     pub send_slot: u64,
     pub sent_at: DateTime<Utc>,
+    #[serde(default)]
     pub trigger_source: String,
     pub slot_signal_status: Option<String>,
     pub slot_signal_observed_at: Option<DateTime<Utc>>,
@@ -141,9 +143,20 @@ pub struct LeaderSendEvent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leader_software_client_id: Option<u16>,
     pub route_policy: Option<String>,
+    #[serde(default)]
     pub selected_routes: Vec<String>,
+    #[serde(default)]
     pub compute_unit_limit: u32,
+    #[serde(default)]
     pub compute_unit_price_microlamports: u64,
+    #[serde(default)]
+    pub base_fee_lamports: u64,
+    #[serde(default)]
+    pub priority_fee_lamports: u64,
+    #[serde(default)]
+    pub transaction_fee_lamports: u64,
+    /// Deprecated compatibility alias for `transaction_fee_lamports`.
+    #[serde(default)]
     pub estimated_spend_lamports: u64,
 }
 
@@ -253,7 +266,10 @@ pub async fn run_leader_paced(
     let collector_handle = options.rpcedge.clone().map(|rpcedge| {
         let output_dir = writer.run_dir.join("rpcedge-observations");
         let duration = options.duration + options.observe_extra;
-        let account_include = vec![payer.pubkey().to_string()];
+        let mut account_include = vec![payer.pubkey().to_string()];
+        account_include.extend(options.extra_observation_accounts.iter().cloned());
+        account_include.sort();
+        account_include.dedup();
         let collector_config = RpcEdgeCollectConfig {
             test_id: test_id.clone(),
             endpoint: rpcedge.endpoint,
@@ -351,7 +367,7 @@ pub async fn run_leader_paced(
 
                     let tx =
                         build_transaction_with_blockhash(&tx_config, &payer, iteration, blockhash)?;
-                    estimated_spent = estimated_spent.saturating_add(tx.estimated_spend_lamports);
+                    estimated_spent = estimated_spent.saturating_add(tx.transaction_fee_lamports);
                     pending.push(PendingLeaderTx {
                         tx,
                         iteration,
@@ -399,6 +415,9 @@ pub async fn run_leader_paced(
                         .unwrap_or_default(),
                     compute_unit_limit: pending_tx.compute_unit_limit,
                     compute_unit_price_microlamports: pending_tx.compute_unit_price_microlamports,
+                    base_fee_lamports: pending_tx.tx.base_fee_lamports,
+                    priority_fee_lamports: pending_tx.tx.priority_fee_lamports,
+                    transaction_fee_lamports: pending_tx.tx.transaction_fee_lamports,
                     estimated_spend_lamports: pending_tx.tx.estimated_spend_lamports,
                 };
                 serde_json::to_writer(&mut leader_sends, &event)
@@ -431,6 +450,9 @@ pub async fn run_leader_paced(
                         pending_tx.policy_arm_index,
                         pending_tx.compute_unit_limit,
                         pending_tx.compute_unit_price_microlamports,
+                        pending_tx.tx.base_fee_lamports,
+                        pending_tx.tx.priority_fee_lamports,
+                        pending_tx.tx.transaction_fee_lamports,
                     )
                 });
                 for tx_samples in join_all(futures).await {
@@ -567,6 +589,9 @@ async fn send_one_transaction_to_providers(
     policy_arm_index: Option<u16>,
     compute_unit_limit: u32,
     compute_unit_price_microlamports: u64,
+    base_fee_lamports: u64,
+    priority_fee_lamports: u64,
+    transaction_fee_lamports: u64,
 ) -> Vec<BenchSample> {
     let started = Instant::now();
     let ctx = SendContext {
@@ -602,6 +627,9 @@ async fn send_one_transaction_to_providers(
                 leader_metadata.software_client_id,
                 compute_unit_limit,
                 compute_unit_price_microlamports,
+                base_fee_lamports,
+                priority_fee_lamports,
+                transaction_fee_lamports,
                 tx.estimated_spend_lamports,
                 ack,
             )
@@ -990,19 +1018,46 @@ fn write_matched_observation_summary(
     observations_path: &std::path::Path,
     min_sources: usize,
 ) -> Result<MatchedObservationSummary> {
-    let submitted_at = samples.iter().fold(
-        BTreeMap::<String, DateTime<Utc>>::new(),
-        |mut map, sample| {
-            map.entry(sample.signature.clone())
+    #[derive(Debug, Clone)]
+    struct MatchSubject {
+        submitted_at: DateTime<Utc>,
+        role: &'static str,
+        caller_signature: String,
+    }
+
+    let mut submitted_at = BTreeMap::<String, MatchSubject>::new();
+    for sample in samples {
+        submitted_at
+            .entry(sample.signature.clone())
+            .and_modify(|existing| {
+                if sample.client_started_at < existing.submitted_at {
+                    existing.submitted_at = sample.client_started_at;
+                }
+            })
+            .or_insert_with(|| MatchSubject {
+                submitted_at: sample.client_started_at,
+                role: "caller",
+                caller_signature: sample.signature.clone(),
+            });
+
+        for result in &sample.route_results {
+            let Some(tip_signature) = result.route_tip_signature.as_ref() else {
+                continue;
+            };
+            submitted_at
+                .entry(tip_signature.clone())
                 .and_modify(|existing| {
-                    if sample.client_started_at < *existing {
-                        *existing = sample.client_started_at;
+                    if sample.client_started_at < existing.submitted_at {
+                        existing.submitted_at = sample.client_started_at;
                     }
                 })
-                .or_insert(sample.client_started_at);
-            map
-        },
-    );
+                .or_insert_with(|| MatchSubject {
+                    submitted_at: sample.client_started_at,
+                    role: "route_tip",
+                    caller_signature: sample.signature.clone(),
+                });
+        }
+    }
 
     let file = File::open(observations_path)
         .with_context(|| format!("open {}", observations_path.display()))?;
@@ -1025,8 +1080,12 @@ fn write_matched_observation_summary(
                 line_no + 1
             )
         })?;
-        if let Some(started_at) = submitted_at.get(&event.signature) {
-            event.submitted_at = Some(*started_at);
+        if let Some(subject) = submitted_at.get(&event.signature) {
+            event.submitted_at = Some(subject.submitted_at);
+            event.signature_role = Some(subject.role.to_string());
+            if subject.role != "caller" {
+                event.caller_signature = Some(subject.caller_signature.clone());
+            }
             matched_events.push(event);
         }
     }
@@ -1328,6 +1387,7 @@ mod tests {
             route_strategy: LeaderPacedRouteStrategy::PairedRoutePolicies,
             client_aware_harmonic_cu_price_microlamports: Some(300_000),
             trigger: LeaderPacedTrigger::RpcPoll,
+            extra_observation_accounts: Vec::new(),
         };
         let selection = RouteSelection::only("always_race", ["tpu_quic", "harmonic_bundle"]);
         assert_eq!(

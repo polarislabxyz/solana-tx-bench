@@ -131,6 +131,9 @@ pub async fn run_benchmark(config: BenchConfig) -> Result<BenchRunOutput> {
                 None,
                 config.compute_unit_limit,
                 config.compute_unit_price_microlamports,
+                tx.base_fee_lamports,
+                tx.priority_fee_lamports,
+                tx.transaction_fee_lamports,
                 tx.estimated_spend_lamports,
                 ack,
             );

@@ -225,11 +225,22 @@ The relay adds the Jito bundle tip transaction when the route executes. The
 benchmark's public fast ACK does not include the added tip signature. For QUIC
 benchmarks, set `route_results: true` on the RPCEdge provider to request bounded
 route-result ACKs. When returned, artifacts include `route_tip_signature`,
-`route_tip_lamports`, and `route_tip_account`; reports display route-added tip
-cost and total estimated spend. If route-tip telemetry is absent, cost ranking
-is incomplete for any arm that includes `jito_bundle`. The public
-`estimated_spend_lamports` field covers the benchmark transaction's base fee
-plus configured compute-unit price only.
+`route_tip_lamports`, and `route_tip_account`.
+
+Reports separate:
+
+- signed caller transaction fee: base fee plus priority fee;
+- route-tip generated spend: relay returned a tip transaction for the Jito
+  route; and
+- route-tip landed spend: that route-tip signature was observed by the matched
+  streams.
+
+If route-tip telemetry is absent, cost ranking is incomplete for any arm that
+includes `jito_bundle`. If route-tip telemetry exists but the stream does not
+observe the tip signature, the generated cost is visible but landed route-tip
+cost remains zero. Include known relay Jito tip accounts with
+`run-leader-paced --observation-account <pubkey>` when landed route-tip
+attribution matters.
 
 Retries and intentional resends are not part of the route-policy baseline.
 The baseline measures one signed transaction per policy arm from the same gRPC
@@ -363,7 +374,8 @@ cost-normalized deltas:
 - processed `slot_index` p50/p90/p99;
 - observed success ratio;
 - extra priority fee lamports versus the TPU-only baseline;
-- extra route tip lamports for Jito bundle attempts;
+- extra route tip generated and route tip landed lamports for Jito bundle
+  attempts;
 - milliseconds improved per additional lamport;
 - block-index positions improved per additional lamport.
 
@@ -373,10 +385,10 @@ The cost floor for the generated transaction is:
 base signature fee + ceil(CU limit * CU price microlamports / 1_000_000)
 ```
 
-Jito route-added bundle tips are not visible in the transaction itself. Use
-RPCEdge route-attempt telemetry for the actual Jito tip cost when available.
-If only public artifacts are available, label Jito tip cost as unknown or an
-estimate rather than mixing it into exact cost-normalized scores.
+Jito route-added bundle tips are not visible in the caller transaction itself.
+Use RPCEdge route-result telemetry for generated tip cost, and matched
+observations for landed tip cost. Do not collapse those into one estimated
+spend number.
 
 ## Comparison Scoring
 

@@ -67,6 +67,8 @@ enum Command {
         route_strategy: String,
         #[arg(long)]
         client_aware_harmonic_cu_price_microlamports: Option<u64>,
+        #[arg(long, value_delimiter = ',')]
+        observation_account: Vec<String>,
     },
     InitConfig {
         #[arg(long, default_value = "bench.example.yaml")]
@@ -166,6 +168,7 @@ async fn main() -> Result<()> {
             leader_slots_lookahead,
             route_strategy,
             client_aware_harmonic_cu_price_microlamports,
+            observation_account,
         } => {
             let text = fs::read_to_string(&config)
                 .with_context(|| format!("read {}", config.display()))?;
@@ -207,6 +210,7 @@ async fn main() -> Result<()> {
                     route_strategy: parse_route_strategy(&route_strategy)?,
                     client_aware_harmonic_cu_price_microlamports,
                     trigger,
+                    extra_observation_accounts: observation_account,
                 },
             )
             .await?;

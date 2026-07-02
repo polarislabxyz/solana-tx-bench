@@ -148,9 +148,13 @@ tip cost unless that route-attempt data or route-detailed ACK data is present.
 For QUIC benchmarks, set `route_results: true` on the `rpcedge_quic_raw_tx`
 provider to request bounded route-result ACKs. When the relay returns
 `route_tip_signature`, `route_tip_lamports`, and `route_tip_account`, reports
-include the route-added Jito tip in displayed total spend. If those fields are
-absent, arms that include `jito_bundle` can still be compared on landing
-quality, but their full economic cost is unknown.
+show the route-added Jito tip as generated spend. They count it as landed spend
+only if the tip signature is observed in the benchmark streams. Since the stream
+subscription is account-filtered, pass known relay tip accounts with
+`run-leader-paced --observation-account <pubkey>` when landed Jito-tip cost is
+part of the analysis. If route-tip fields are absent, arms that include
+`jito_bundle` can still be compared on landing quality, but their full economic
+cost is unknown.
 
 ## Rakurai / Raiku
 

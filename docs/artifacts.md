@@ -245,16 +245,24 @@ slowest first-observed landing events. Tail rows include:
 - landed slot, landed leader, and landed leader client;
 - first-observed slot index when available;
 - processed Yellowstone/gRPC slot index when available;
-- compute-unit price and estimated transaction spend.
+- compute-unit price;
+- base fee, priority fee, transaction fee;
+- route-tip generated lamports, route-tip landed lamports, and generated vs
+  landed total spend.
 
 Use the processed slot index for block-position analysis even when deshred was
 the first observed source. Deshred is the latency clock; processed gRPC is the
 canonical transaction metadata clock.
 
-`estimated_spend_lamports` is the benchmark transaction estimate: base fee plus
-configured compute-unit price. It does not include relay-side route tips such as
-an internally added Jito bundle tip unless `route_results` include explicit
-route-tip fields.
+`estimated_spend_lamports` is retained as a deprecated compatibility alias for
+the signed caller transaction fee. New readers should use:
+
+- `base_fee_lamports`;
+- `priority_fee_lamports`;
+- `transaction_fee_lamports`;
+- `route_results[].route_tip_lamports` for route-tip generated spend; and
+- report-level `route_tip_landed_lamports` fields for route tips whose
+  signatures were actually observed.
 
 When an RPCEdge QUIC provider is configured with `route_results: true`,
 `samples.ndjson` may also include:
@@ -268,6 +276,13 @@ When an RPCEdge QUIC provider is configured with `route_results: true`,
   `route_results[].route_tip_lamports`, and
   `route_results[].route_tip_account`: exact route-added Jito tip metadata when
   the relay's `jito_bundle` route created a separate tip transaction.
+
+Route-tip generated spend is not the same as landed route-tip spend. Generated
+means the relay returned a tip transaction signature for the route. Landed means
+that signature appears in `matched-observations.ndjson`. Because RPCEdge
+observation subscriptions are account-filtered, include known relay Jito tip
+accounts with `run-leader-paced --observation-account <pubkey>` when you want
+the report to count landed route-tip spend.
 
 ## comparison.json / comparison.md / comparison.html / index.html
 

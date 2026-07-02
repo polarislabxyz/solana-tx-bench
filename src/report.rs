@@ -22,6 +22,7 @@ pub struct ReportOutput {
     pub totals: ReportTotals,
     pub provider_summaries: Vec<ProviderReportSummary>,
     pub source_summaries: Vec<SourceReportSummary>,
+    pub cost_summary: CostReportSummary,
     pub cohort_summaries: Vec<CohortReportSummary>,
     pub tail_events: Vec<TailEvent>,
     pub warnings: Vec<String>,
@@ -33,7 +34,29 @@ pub struct ReportTotals {
     pub sent_transactions: usize,
     pub observations: usize,
     pub matched_signatures: usize,
+    pub matched_route_tip_signatures: usize,
     pub leader_slot_snapshots: usize,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CostReportSummary {
+    pub submitted_transactions: usize,
+    pub total_base_fee_lamports: u64,
+    pub total_priority_fee_lamports: u64,
+    pub total_transaction_fee_lamports: u64,
+    pub total_route_tip_generated_lamports: u64,
+    pub total_route_tip_landed_lamports: u64,
+    pub total_generated_spend_lamports: u64,
+    pub total_landed_spend_lamports: u64,
+    pub avg_base_fee_lamports: Option<f64>,
+    pub avg_priority_fee_lamports: Option<f64>,
+    pub avg_transaction_fee_lamports: Option<f64>,
+    pub avg_route_tip_generated_lamports: Option<f64>,
+    pub avg_route_tip_landed_lamports: Option<f64>,
+    pub avg_total_generated_spend_lamports: Option<f64>,
+    pub avg_total_landed_spend_lamports: Option<f64>,
+    pub generated_route_tip_count: usize,
+    pub landed_route_tip_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,6 +126,14 @@ pub struct TailEvent {
     pub landed_leader_city: String,
     pub landed_leader_client: String,
     pub compute_unit_price_microlamports: Option<u64>,
+    pub base_fee_lamports: Option<u64>,
+    pub priority_fee_lamports: Option<u64>,
+    pub transaction_fee_lamports: Option<u64>,
+    pub route_tip_generated_lamports: Option<u64>,
+    pub route_tip_landed_lamports: Option<u64>,
+    pub total_generated_spend_lamports: Option<u64>,
+    pub total_landed_spend_lamports: Option<u64>,
+    /// Deprecated compatibility alias for transaction fee only.
     pub estimated_spend_lamports: Option<u64>,
     pub leader_identity: String,
     pub leader_region: String,
@@ -161,9 +192,24 @@ pub fn generate_report(artifact_dir: &Path) -> Result<ReportOutput> {
         .cloned()
         .map(|sample| (sample.signature.clone(), sample))
         .collect::<BTreeMap<_, _>>();
-    let processed_slot_index_by_signature = build_processed_slot_index_lookup(&observations);
+    let caller_observations = observations
+        .iter()
+        .filter(|event| !is_route_tip_observation(event))
+        .cloned()
+        .collect::<Vec<_>>();
+    let route_tip_observations = observations
+        .iter()
+        .filter(|event| is_route_tip_observation(event))
+        .cloned()
+        .collect::<Vec<_>>();
+    let observed_signatures = observations
+        .iter()
+        .map(|event| event.signature.clone())
+        .collect::<BTreeSet<_>>();
+    let cost_by_signature = cost_rows_by_signature(&samples, &sends, &observed_signatures);
+    let processed_slot_index_by_signature = build_processed_slot_index_lookup(&caller_observations);
 
-    let rows = observations
+    let rows = caller_observations
         .iter()
         .cloned()
         .map(|event| {
@@ -218,6 +264,12 @@ pub fn generate_report(artifact_dir: &Path) -> Result<ReportOutput> {
             observations: observations.len(),
             matched_signatures: observations
                 .iter()
+                .filter(|event| !is_route_tip_observation(event))
+                .map(|event| event.signature.as_str())
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            matched_route_tip_signatures: route_tip_observations
+                .iter()
                 .map(|event| event.signature.as_str())
                 .collect::<std::collections::BTreeSet<_>>()
                 .len(),
@@ -225,10 +277,12 @@ pub fn generate_report(artifact_dir: &Path) -> Result<ReportOutput> {
         },
         provider_summaries: summarize_providers(&samples, manifest.as_ref()),
         source_summaries: summarize_sources(&landing_rows),
+        cost_summary: summarize_costs(&cost_by_signature),
         cohort_summaries: summarize_cohorts(&landing_rows),
         tail_events: summarize_tail_events(
             &landing_rows,
             &sample_by_signature,
+            &cost_by_signature,
             &processed_slot_index_by_signature,
             &leader_by_slot,
             12,
@@ -282,7 +336,7 @@ fn report_warnings(samples: &[BenchSample], sends: &[LeaderSendEvent]) -> Vec<St
         });
         if !has_route_tip {
             warnings.push(
-                "This artifact includes jito_bundle route attempts. Transaction spend fields cover base fee and configured priority fee only because no route-tip telemetry was present in the artifacts.".to_string(),
+                "This artifact includes jito_bundle route attempts, but no route-tip telemetry was present. Route-tip generated and landed cost will be zero/unknown for those attempts.".to_string(),
             );
         }
     }
@@ -477,6 +531,191 @@ fn stake_bucket(stake_lamports: u64) -> String {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+struct CostRow {
+    base_fee_lamports: u64,
+    priority_fee_lamports: u64,
+    transaction_fee_lamports: u64,
+    route_tip_generated_lamports: u64,
+    route_tip_landed_lamports: u64,
+    total_generated_spend_lamports: u64,
+    total_landed_spend_lamports: u64,
+    generated_route_tip_count: usize,
+    landed_route_tip_count: usize,
+}
+
+fn cost_rows_by_signature(
+    samples: &[BenchSample],
+    sends: &[LeaderSendEvent],
+    observed_signatures: &BTreeSet<String>,
+) -> BTreeMap<String, CostRow> {
+    let mut sample_by_signature = BTreeMap::<String, Vec<&BenchSample>>::new();
+    for sample in samples {
+        sample_by_signature
+            .entry(sample.signature.clone())
+            .or_default()
+            .push(sample);
+    }
+
+    let mut signatures = sends
+        .iter()
+        .map(|send| send.signature.clone())
+        .collect::<BTreeSet<_>>();
+    signatures.extend(sample_by_signature.keys().cloned());
+
+    signatures
+        .into_iter()
+        .map(|signature| {
+            let send = sends.iter().find(|send| send.signature == signature);
+            let sample = sample_by_signature
+                .get(&signature)
+                .and_then(|rows| rows.first().copied());
+
+            let base_fee_lamports = send
+                .map(|send| send.base_fee_lamports)
+                .filter(|value| *value > 0)
+                .or_else(|| {
+                    sample
+                        .map(|sample| sample.base_fee_lamports)
+                        .filter(|value| *value > 0)
+                })
+                .unwrap_or(5_000);
+            let priority_fee_lamports = send
+                .map(|send| send.priority_fee_lamports)
+                .filter(|value| *value > 0)
+                .or_else(|| {
+                    sample
+                        .map(|sample| sample.priority_fee_lamports)
+                        .filter(|value| *value > 0)
+                })
+                .unwrap_or_else(|| {
+                    let (limit, price) = send
+                        .map(|send| {
+                            (
+                                send.compute_unit_limit,
+                                send.compute_unit_price_microlamports,
+                            )
+                        })
+                        .or_else(|| {
+                            sample.map(|sample| {
+                                (
+                                    sample.compute_unit_limit,
+                                    sample.compute_unit_price_microlamports,
+                                )
+                            })
+                        })
+                        .unwrap_or((0, 0));
+                    crate::cost::priority_fee_lamports(limit, price)
+                });
+            let transaction_fee_lamports = send
+                .map(|send| send.transaction_fee_lamports)
+                .filter(|value| *value > 0)
+                .or_else(|| {
+                    sample
+                        .map(|sample| sample.transaction_fee_lamports)
+                        .filter(|value| *value > 0)
+                })
+                .unwrap_or_else(|| base_fee_lamports.saturating_add(priority_fee_lamports));
+
+            let mut route_tip_generated_lamports = 0_u64;
+            let mut route_tip_landed_lamports = 0_u64;
+            let mut generated_route_tip_count = 0_usize;
+            let mut landed_route_tip_count = 0_usize;
+            if let Some(samples) = sample_by_signature.get(&signature) {
+                for sample in samples {
+                    for result in &sample.route_results {
+                        let lamports = result.route_tip_lamports.unwrap_or(0);
+                        if lamports == 0 {
+                            continue;
+                        }
+                        generated_route_tip_count += 1;
+                        route_tip_generated_lamports =
+                            route_tip_generated_lamports.saturating_add(lamports);
+                        if result
+                            .route_tip_signature
+                            .as_ref()
+                            .map(|signature| observed_signatures.contains(signature))
+                            .unwrap_or(false)
+                        {
+                            landed_route_tip_count += 1;
+                            route_tip_landed_lamports =
+                                route_tip_landed_lamports.saturating_add(lamports);
+                        }
+                    }
+                }
+            }
+
+            (
+                signature,
+                CostRow {
+                    base_fee_lamports,
+                    priority_fee_lamports,
+                    transaction_fee_lamports,
+                    route_tip_generated_lamports,
+                    route_tip_landed_lamports,
+                    total_generated_spend_lamports: transaction_fee_lamports
+                        .saturating_add(route_tip_generated_lamports),
+                    total_landed_spend_lamports: transaction_fee_lamports
+                        .saturating_add(route_tip_landed_lamports),
+                    generated_route_tip_count,
+                    landed_route_tip_count,
+                },
+            )
+        })
+        .collect()
+}
+
+fn summarize_costs(cost_by_signature: &BTreeMap<String, CostRow>) -> CostReportSummary {
+    let mut out = CostReportSummary {
+        submitted_transactions: cost_by_signature.len(),
+        ..CostReportSummary::default()
+    };
+    for cost in cost_by_signature.values() {
+        out.total_base_fee_lamports = out
+            .total_base_fee_lamports
+            .saturating_add(cost.base_fee_lamports);
+        out.total_priority_fee_lamports = out
+            .total_priority_fee_lamports
+            .saturating_add(cost.priority_fee_lamports);
+        out.total_transaction_fee_lamports = out
+            .total_transaction_fee_lamports
+            .saturating_add(cost.transaction_fee_lamports);
+        out.total_route_tip_generated_lamports = out
+            .total_route_tip_generated_lamports
+            .saturating_add(cost.route_tip_generated_lamports);
+        out.total_route_tip_landed_lamports = out
+            .total_route_tip_landed_lamports
+            .saturating_add(cost.route_tip_landed_lamports);
+        out.total_generated_spend_lamports = out
+            .total_generated_spend_lamports
+            .saturating_add(cost.total_generated_spend_lamports);
+        out.total_landed_spend_lamports = out
+            .total_landed_spend_lamports
+            .saturating_add(cost.total_landed_spend_lamports);
+        out.generated_route_tip_count += cost.generated_route_tip_count;
+        out.landed_route_tip_count += cost.landed_route_tip_count;
+    }
+
+    let count = out.submitted_transactions as f64;
+    if count > 0.0 {
+        out.avg_base_fee_lamports = Some(out.total_base_fee_lamports as f64 / count);
+        out.avg_priority_fee_lamports = Some(out.total_priority_fee_lamports as f64 / count);
+        out.avg_transaction_fee_lamports = Some(out.total_transaction_fee_lamports as f64 / count);
+        out.avg_route_tip_generated_lamports =
+            Some(out.total_route_tip_generated_lamports as f64 / count);
+        out.avg_route_tip_landed_lamports =
+            Some(out.total_route_tip_landed_lamports as f64 / count);
+        out.avg_total_generated_spend_lamports =
+            Some(out.total_generated_spend_lamports as f64 / count);
+        out.avg_total_landed_spend_lamports = Some(out.total_landed_spend_lamports as f64 / count);
+    }
+    out
+}
+
+fn is_route_tip_observation(event: &ObservationEvent) -> bool {
+    event.signature_role.as_deref() == Some("route_tip")
+}
+
 fn summarize_providers(
     samples: &[BenchSample],
     manifest: Option<&crate::artifacts::BenchManifest>,
@@ -657,6 +896,7 @@ fn summarize_cohorts(rows: &[ObservationRow]) -> Vec<CohortReportSummary> {
 fn summarize_tail_events(
     rows: &[ObservationRow],
     sample_by_signature: &BTreeMap<String, BenchSample>,
+    cost_by_signature: &BTreeMap<String, CostRow>,
     processed_slot_index_by_signature: &BTreeMap<String, u64>,
     leader_by_slot: &BTreeMap<u64, LeaderMeta>,
     limit: usize,
@@ -702,6 +942,7 @@ fn summarize_tail_events(
             let estimated_spend_lamports = sample
                 .map(|sample| sample.estimated_spend_lamports)
                 .or_else(|| send.map(|send| send.estimated_spend_lamports));
+            let cost = cost_by_signature.get(&row.event.signature);
 
             TailEvent {
                 signature: row.event.signature.clone(),
@@ -726,6 +967,14 @@ fn summarize_tail_events(
                 landed_leader_city: row.leader.city.clone(),
                 landed_leader_client: row.leader.client_software.clone(),
                 compute_unit_price_microlamports,
+                base_fee_lamports: cost.map(|cost| cost.base_fee_lamports),
+                priority_fee_lamports: cost.map(|cost| cost.priority_fee_lamports),
+                transaction_fee_lamports: cost.map(|cost| cost.transaction_fee_lamports),
+                route_tip_generated_lamports: cost.map(|cost| cost.route_tip_generated_lamports),
+                route_tip_landed_lamports: cost.map(|cost| cost.route_tip_landed_lamports),
+                total_generated_spend_lamports: cost
+                    .map(|cost| cost.total_generated_spend_lamports),
+                total_landed_spend_lamports: cost.map(|cost| cost.total_landed_spend_lamports),
                 estimated_spend_lamports,
                 leader_identity: row.leader.identity.clone(),
                 leader_region: row.leader.region.clone(),
@@ -809,19 +1058,39 @@ fn report_markdown(report: &ReportOutput) -> String {
         report.test_id
     ));
     out.push_str(&format!(
-        "- Generated: `{}`\n- Artifact dir: `{}`\n- Sent transactions: `{}`\n- Provider samples: `{}`\n- Observations: `{}`\n- Matched signatures: `{}`\n- Leader-slot snapshots: `{}`\n\n",
+        "- Generated: `{}`\n- Artifact dir: `{}`\n- Sent transactions: `{}`\n- Provider samples: `{}`\n- Observations: `{}`\n- Matched caller signatures: `{}`\n- Matched route-tip signatures: `{}`\n- Leader-slot snapshots: `{}`\n\n",
         report.generated_at.to_rfc3339_opts(SecondsFormat::Millis, true),
         report.artifact_dir,
         report.totals.sent_transactions,
         report.totals.samples,
         report.totals.observations,
         report.totals.matched_signatures,
+        report.totals.matched_route_tip_signatures,
         report.totals.leader_slot_snapshots,
     ));
     out.push_str("This report is generated only from local benchmark artifacts. Leader metadata comes from saved `getLeaderSlots` snapshots captured during the run; no ClickHouse or private database join is required.\n\n");
     for warning in &report.warnings {
         out.push_str(&format!("> **Warning:** {warning}\n\n"));
     }
+
+    out.push_str("## Cost Summary\n\n");
+    out.push_str("Base fee and priority fee are deterministic fields from the signed benchmark transaction. Route-tip generated spend comes from route-result ACK metadata. Route-tip landed spend is counted only when the route-tip signature was observed in the matched streams.\n\n");
+    out.push_str("| Submitted txs | Avg base fee | Avg priority fee | Avg tx fee | Avg route tip generated | Avg route tip landed | Avg total generated | Avg total landed | Generated tip txs | Landed tip txs |\n");
+    out.push_str("| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
+    let cost = &report.cost_summary;
+    out.push_str(&format!(
+        "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |\n\n",
+        cost.submitted_transactions,
+        fmt_f64(cost.avg_base_fee_lamports),
+        fmt_f64(cost.avg_priority_fee_lamports),
+        fmt_f64(cost.avg_transaction_fee_lamports),
+        fmt_f64(cost.avg_route_tip_generated_lamports),
+        fmt_f64(cost.avg_route_tip_landed_lamports),
+        fmt_f64(cost.avg_total_generated_spend_lamports),
+        fmt_f64(cost.avg_total_landed_spend_lamports),
+        cost.generated_route_tip_count,
+        cost.landed_route_tip_count,
+    ));
 
     out.push_str("## Landing Observations\n\n");
     out.push_str("Landing latency uses the earliest observation per transaction across configured streams. In normal RPCEdge runs this should be the deshred stream; processed metadata is only counted here when it is the first or only observation for a signature.\n\n");
@@ -875,11 +1144,11 @@ fn report_markdown(report: &ReportOutput) -> String {
 
     out.push_str("\n## Tail Events\n\n");
     out.push_str("Tail latency uses the first observation time, normally deshred. Transaction slot index uses processed Yellowstone/gRPC metadata when available, because deshred is fastest but processed carries canonical transaction metadata.\n\n");
-    out.push_str("| Signature | Source | Latency ms | Arm | Routes | Send slot | Send leader | Send client | Landed slot | Landed leader | Landed client | Tx index |\n");
-    out.push_str("| --- | --- | ---: | --- | --- | ---: | --- | --- | ---: | --- | --- | ---: |\n");
+    out.push_str("| Signature | Source | Latency ms | Arm | Routes | Send slot | Send leader | Send client | Landed slot | Landed leader | Landed client | Tx index | Tx fee | Route tip generated | Route tip landed | Total landed |\n");
+    out.push_str("| --- | --- | ---: | --- | --- | ---: | --- | --- | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: |\n");
     for row in &report.tail_events {
         out.push_str(&format!(
-            "| `{}` | `{}` | {:.3} | `{}` | `{}` | {} | `{}` | `{}` | {} | `{}` | `{}` | {} |\n",
+            "| `{}` | `{}` | {:.3} | `{}` | `{}` | {} | `{}` | `{}` | {} | `{}` | `{}` | {} | {} | {} | {} | {} |\n",
             short_sig(&row.signature),
             row.source_name,
             row.latency_ms,
@@ -892,6 +1161,10 @@ fn report_markdown(report: &ReportOutput) -> String {
             leader_label(&row.landed_leader_identity, &row.landed_leader_city),
             row.landed_leader_client,
             fmt_u64(row.processed_slot_index),
+            fmt_u64(row.transaction_fee_lamports),
+            fmt_u64(row.route_tip_generated_lamports),
+            fmt_u64(row.route_tip_landed_lamports),
+            fmt_u64(row.total_landed_spend_lamports),
         ));
     }
     out.push_str("\n## Appendix: Sender ACK Diagnostics\n\n");
@@ -947,8 +1220,12 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.note{background:#fff;
         ("Provider Samples", report.totals.samples.to_string()),
         ("Observations", report.totals.observations.to_string()),
         (
-            "Matched Signatures",
+            "Matched Caller Sigs",
             report.totals.matched_signatures.to_string(),
+        ),
+        (
+            "Matched Tip Sigs",
+            report.totals.matched_route_tip_signatures.to_string(),
         ),
         (
             "Leader Snapshots",
@@ -969,6 +1246,24 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.note{background:#fff;
             html_escape(warning)
         ));
     }
+
+    let cost = &report.cost_summary;
+    out.push_str("<h2>Cost Summary</h2><p class=\"muted\">Base and priority fees come from the signed caller transaction. Route-tip generated spend comes from route-result ACKs. Route-tip landed spend counts only route-tip signatures observed by the matched streams.</p>");
+    out.push_str("<table><thead><tr><th>Submitted txs</th><th>Avg base fee</th><th>Avg priority fee</th><th>Avg tx fee</th><th>Avg route tip generated</th><th>Avg route tip landed</th><th>Avg total generated</th><th>Avg total landed</th><th>Generated tip txs</th><th>Landed tip txs</th></tr></thead><tbody>");
+    out.push_str(&format!(
+        "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+        cost.submitted_transactions,
+        fmt_f64(cost.avg_base_fee_lamports),
+        fmt_f64(cost.avg_priority_fee_lamports),
+        fmt_f64(cost.avg_transaction_fee_lamports),
+        fmt_f64(cost.avg_route_tip_generated_lamports),
+        fmt_f64(cost.avg_route_tip_landed_lamports),
+        fmt_f64(cost.avg_total_generated_spend_lamports),
+        fmt_f64(cost.avg_total_landed_spend_lamports),
+        cost.generated_route_tip_count,
+        cost.landed_route_tip_count,
+    ));
+    out.push_str("</tbody></table>");
 
     out.push_str("<h2>Landing Observations</h2><p class=\"muted\">Landing latency uses the earliest observation per transaction across configured streams. In normal RPCEdge runs this should be the deshred stream; processed metadata is only counted here when it is the first or only observation for a signature.</p>");
     out.push_str("<table><thead><tr><th>First source</th><th>Count</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>max ms</th><th>same-slot</th><th>slot delta p50</th><th>slot index p50</th></tr></thead><tbody>");
@@ -1021,10 +1316,10 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.note{background:#fff;
         out.push_str("</tbody></table>");
     }
 
-    out.push_str("<h2>Tail Events</h2><p class=\"muted\">Latency uses the first observation time, normally deshred. Transaction slot index uses processed Yellowstone/gRPC metadata when available; deshred is the fastest timing source, processed is the canonical source for transaction metadata.</p><table><thead><tr><th>Signature</th><th>Source</th><th>Latency ms</th><th>Arm</th><th>Routes</th><th>Send slot</th><th>Send leader</th><th>Send client</th><th>Landed slot</th><th>Landed leader</th><th>Landed client</th><th>Tx index</th></tr></thead><tbody>");
+    out.push_str("<h2>Tail Events</h2><p class=\"muted\">Latency uses the first observation time, normally deshred. Transaction slot index uses processed Yellowstone/gRPC metadata when available; deshred is the fastest timing source, processed is the canonical source for transaction metadata.</p><table><thead><tr><th>Signature</th><th>Source</th><th>Latency ms</th><th>Arm</th><th>Routes</th><th>Send slot</th><th>Send leader</th><th>Send client</th><th>Landed slot</th><th>Landed leader</th><th>Landed client</th><th>Tx index</th><th>Tx fee</th><th>Route tip gen</th><th>Route tip landed</th><th>Total landed</th></tr></thead><tbody>");
     for row in &report.tail_events {
         out.push_str(&format!(
-            "<tr><td class=\"left\"><code>{}</code></td><td><code>{}</code></td><td>{:.3}</td><td><code>{}</code></td><td class=\"left\"><code>{}</code></td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td></tr>",
+            "<tr><td class=\"left\"><code>{}</code></td><td><code>{}</code></td><td>{:.3}</td><td><code>{}</code></td><td class=\"left\"><code>{}</code></td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
             html_escape(&short_sig(&row.signature)),
             html_escape(&row.source_name),
             row.latency_ms,
@@ -1037,6 +1332,10 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.note{background:#fff;
             html_escape(&leader_label(&row.landed_leader_identity, &row.landed_leader_city)),
             html_escape(&row.landed_leader_client),
             fmt_u64(row.processed_slot_index),
+            fmt_u64(row.transaction_fee_lamports),
+            fmt_u64(row.route_tip_generated_lamports),
+            fmt_u64(row.route_tip_landed_lamports),
+            fmt_u64(row.total_landed_spend_lamports),
         ));
     }
     out.push_str("</tbody></table>");
@@ -1082,7 +1381,7 @@ fn write_tail_artifacts(artifact_dir: &Path, tail_events: &[TailEvent]) -> Resul
 
 fn tail_events_csv(rows: &[TailEvent]) -> String {
     let mut out = String::new();
-    out.push_str("signature,source_name,latency_ms,policy_arm,route_policy,selected_routes,send_slot,send_leader_identity,send_leader_city,send_leader_client,landed_slot,landed_leader_identity,landed_leader_city,landed_leader_client,first_observed_slot_index,processed_slot_index,compute_unit_price_microlamports,estimated_spend_lamports,comparison_group_id\n");
+    out.push_str("signature,source_name,latency_ms,policy_arm,route_policy,selected_routes,send_slot,send_leader_identity,send_leader_city,send_leader_client,landed_slot,landed_leader_identity,landed_leader_city,landed_leader_client,first_observed_slot_index,processed_slot_index,compute_unit_price_microlamports,base_fee_lamports,priority_fee_lamports,transaction_fee_lamports,route_tip_generated_lamports,route_tip_landed_lamports,total_generated_spend_lamports,total_landed_spend_lamports,estimated_spend_lamports,comparison_group_id\n");
     for row in rows {
         let fields = [
             row.signature.clone(),
@@ -1102,6 +1401,27 @@ fn tail_events_csv(rows: &[TailEvent]) -> String {
             fmt_u64(row.first_observed_slot_index),
             fmt_u64(row.processed_slot_index),
             row.compute_unit_price_microlamports
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.base_fee_lamports
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.priority_fee_lamports
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.transaction_fee_lamports
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.route_tip_generated_lamports
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.route_tip_landed_lamports
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.total_generated_spend_lamports
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.total_landed_spend_lamports
                 .map(|value| value.to_string())
                 .unwrap_or_default(),
             row.estimated_spend_lamports
@@ -1126,12 +1446,12 @@ fn tail_events_html(rows: &[TailEvent]) -> String {
     out.push_str("<!doctype html><html><head><meta charset=\"utf-8\"><title>Tail Events</title>");
     out.push_str("<style>body{font-family:Inter,system-ui,sans-serif;margin:32px;color:#17202a}table{border-collapse:collapse;width:100%;font-size:13px}th,td{border-bottom:1px solid #e5e8ec;padding:7px 8px;text-align:right;vertical-align:top}th:first-child,td:first-child,td.left{text-align:left}th{background:#f2f4f7}.sig{font-family:ui-monospace,monospace;font-size:12px;word-break:break-all}code{background:#eef1f4;padding:1px 4px;border-radius:4px}.muted{color:#637083}</style>");
     out.push_str("</head><body><h1>Tail Events</h1>");
-    out.push_str("<p class=\"muted\">Full signatures and route arms for the slowest first-observed landing events. Latency uses the first observation, normally deshred. Transaction index uses processed Yellowstone/gRPC metadata when available.</p>");
+    out.push_str("<p class=\"muted\">Full signatures and route arms for the slowest first-observed landing events. Latency uses the first observation, normally deshred. Transaction index uses processed Yellowstone/gRPC metadata when available. Route-tip landed cost counts only observed tip signatures.</p>");
     out.push_str("<p><a href=\"./\">Full report</a> · <a href=\"./policy-comparison/\">Policy comparison</a> · <a href=\"tail-events.csv\">CSV</a> · <a href=\"tail-events.json\">JSON</a></p>");
-    out.push_str("<table><thead><tr><th>Signature</th><th>First source</th><th>Latency ms</th><th>Arm</th><th>Routes</th><th>Send slot</th><th>Send leader</th><th>Send client</th><th>Landed slot</th><th>Landed leader</th><th>Landed client</th><th>Tx index</th></tr></thead><tbody>");
+    out.push_str("<table><thead><tr><th>Signature</th><th>First source</th><th>Latency ms</th><th>Arm</th><th>Routes</th><th>Send slot</th><th>Send leader</th><th>Send client</th><th>Landed slot</th><th>Landed leader</th><th>Landed client</th><th>Tx index</th><th>Tx fee</th><th>Route tip gen</th><th>Route tip landed</th><th>Total landed</th></tr></thead><tbody>");
     for row in rows {
         out.push_str(&format!(
-            "<tr><td class=\"left sig\">{}</td><td><code>{}</code></td><td>{:.3}</td><td><code>{}</code></td><td class=\"left\"><code>{}</code></td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td></tr>",
+            "<tr><td class=\"left sig\">{}</td><td><code>{}</code></td><td>{:.3}</td><td><code>{}</code></td><td class=\"left\"><code>{}</code></td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
             html_escape(&row.signature),
             html_escape(&row.source_name),
             row.latency_ms,
@@ -1144,6 +1464,10 @@ fn tail_events_html(rows: &[TailEvent]) -> String {
             html_escape(&leader_label(&row.landed_leader_identity, &row.landed_leader_city)),
             html_escape(&row.landed_leader_client),
             fmt_u64(row.processed_slot_index),
+            fmt_u64(row.transaction_fee_lamports),
+            fmt_u64(row.route_tip_generated_lamports),
+            fmt_u64(row.route_tip_landed_lamports),
+            fmt_u64(row.total_landed_spend_lamports),
         ));
     }
     out.push_str("</tbody></table></body></html>");
@@ -1183,6 +1507,12 @@ fn fmt_i64(value: Option<i64>) -> String {
 fn fmt_u64(value: Option<u64>) -> String {
     value
         .map(|value| value.to_string())
+        .unwrap_or_else(|| "-".to_string())
+}
+
+fn fmt_f64(value: Option<f64>) -> String {
+    value
+        .map(|value| format!("{value:.3}"))
         .unwrap_or_else(|| "-".to_string())
 }
 
@@ -1295,5 +1625,39 @@ mod tests {
         assert!(root.join("report.html").exists());
         assert!(root.join("tail-events.csv").exists());
         assert!(root.join("tails.html").exists());
+    }
+
+    #[test]
+    fn report_counts_route_tip_landed_cost_without_polluting_landing_count() {
+        let dir = tempdir().expect("tempdir");
+        let root = dir.path();
+        fs::write(
+            root.join("samples.ndjson"),
+            r#"{"schema_version":4,"test_id":"run-tip","iteration":0,"signature":"caller-sig","provider_name":"p","provider_kind":"rpcedge_quic_raw_tx","accepted":true,"client_started_at":"2026-01-01T00:00:00Z","client_finished_at":"2026-01-01T00:00:00.001Z","client_ack_latency_us":1000,"provider_send_started_at":"2026-01-01T00:00:00Z","provider_send_finished_at":"2026-01-01T00:00:00.001Z","provider_ack_latency_us":1000,"provider_request_id":"run-tip-0","returned_signature":"caller-sig","status_code":200,"error_class":null,"error":null,"route_policy":"always_race","route_mode":"only","selected_routes":["tpu_quic","jito_bundle"],"leader_client_family":"jito","compute_unit_limit":660,"compute_unit_price_microlamports":300000,"base_fee_lamports":5000,"priority_fee_lamports":198,"transaction_fee_lamports":5198,"estimated_spend_lamports":5198,"route_results":[{"route":"jito_bundle","route_name":"jito_bundle","provider":"jito","accepted":true,"latency_us":100,"bundle_id":"bundle-1","route_tip_signature":"tip-sig","route_tip_lamports":1000,"route_tip_account":"tip-account"}]}"#,
+        )
+        .expect("samples");
+        fs::write(
+            root.join("leader-sends.ndjson"),
+            r#"{"schema_version":4,"test_id":"run-tip","iteration":0,"signature":"caller-sig","leader_identity":"leader-a","leader_run_start_slot":100,"leader_run_end_slot":103,"send_slot":100,"sent_at":"2026-01-01T00:00:00Z","trigger_source":"grpc_slot","slot_signal_status":"SLOT_FIRST_SHRED_RECEIVED","slot_signal_observed_at":"2026-01-01T00:00:00Z","leader_client_family":"jito","route_policy":"always_race","selected_routes":["tpu_quic","jito_bundle"],"compute_unit_limit":660,"compute_unit_price_microlamports":300000,"base_fee_lamports":5000,"priority_fee_lamports":198,"transaction_fee_lamports":5198,"estimated_spend_lamports":5198}"#,
+        )
+        .expect("sends");
+        fs::write(
+            root.join("matched-observations.ndjson"),
+            r#"{"schema_version":1,"test_id":"run-tip","signature":"caller-sig","signature_role":"caller","source_name":"rpcedge_deshred","source_kind":"yellowstone_deshred","observed_at":"2026-01-01T00:00:00.100Z","submitted_at":"2026-01-01T00:00:00Z","slot":100,"slot_index":null,"source_sequence":null}
+{"schema_version":1,"test_id":"run-tip","signature":"tip-sig","signature_role":"route_tip","caller_signature":"caller-sig","source_name":"rpcedge_deshred","source_kind":"yellowstone_deshred","observed_at":"2026-01-01T00:00:00.110Z","submitted_at":"2026-01-01T00:00:00Z","slot":100,"slot_index":null,"source_sequence":null}"#,
+        )
+        .expect("observations");
+
+        let report = generate_report(root).expect("report");
+        assert_eq!(report.totals.matched_signatures, 1);
+        assert_eq!(report.totals.matched_route_tip_signatures, 1);
+        assert_eq!(report.cost_summary.total_transaction_fee_lamports, 5_198);
+        assert_eq!(
+            report.cost_summary.total_route_tip_generated_lamports,
+            1_000
+        );
+        assert_eq!(report.cost_summary.total_route_tip_landed_lamports, 1_000);
+        assert_eq!(report.cost_summary.total_landed_spend_lamports, 6_198);
+        assert_eq!(report.source_summaries[0].count, 1);
     }
 }
