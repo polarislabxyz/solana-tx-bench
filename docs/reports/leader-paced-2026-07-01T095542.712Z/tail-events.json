@@ -18,7 +18,7 @@
     "leader_software_client": "HarmonicAgave",
     "leader_software_client_id": 10,
     "compute_unit_price_microlamports": 0,
-    "estimated_spend_lamports": 5000
+    "transaction_fee_lamports": 5000
   },
   {
     "signature": "5fM5SzgSa37J5QBkRV6cXEmtWsUN4t2wqupkZKWASMHChFTYkCyUMPfx5i65d32XTPXTZd6Sn1aD7zweSLkFt5Lv",
@@ -39,7 +39,7 @@
     "leader_software_client": "HarmonicAgave",
     "leader_software_client_id": 10,
     "compute_unit_price_microlamports": 300000,
-    "estimated_spend_lamports": 5198
+    "transaction_fee_lamports": 5198
   },
   {
     "signature": "5LbB7t11NWKCeV3PyutmSwPudnGoqRos7Cxm77bcCvq5kTGpC9ekdSpsv2bkz9K7UtBqVXpb43DbEkn5ENHR5SMP",
@@ -60,7 +60,7 @@
     "leader_software_client": "HarmonicFrankendancer",
     "leader_software_client_id": 11,
     "compute_unit_price_microlamports": 0,
-    "estimated_spend_lamports": 5000
+    "transaction_fee_lamports": 5000
   },
   {
     "signature": "3QR4Dq7EjMQMwsZsnRfdBGBaZ73ULq9TTTU1tf6uZLJfSqcABi4HbQTG8HV79G4V9vRFEKu9q34gzJq9eTutVeWx",
@@ -81,7 +81,7 @@
     "leader_software_client": "HarmonicFrankendancer",
     "leader_software_client_id": 11,
     "compute_unit_price_microlamports": 300000,
-    "estimated_spend_lamports": 5198
+    "transaction_fee_lamports": 5198
   },
   {
     "signature": "4mvyy7zyqxXynHZegDHTd5ULZCYsmmxstyqM8vH8xAdRCtspaan7BpfYv3zUNyfLXN4k7SGSwFjrabPMCQzf34PJ",
@@ -102,7 +102,7 @@
     "leader_software_client": "HarmonicFrankendancer",
     "leader_software_client_id": 11,
     "compute_unit_price_microlamports": 0,
-    "estimated_spend_lamports": 5000
+    "transaction_fee_lamports": 5000
   },
   {
     "signature": "2ap5KW4mJ3T9fjhuynrceSL1DyhRM18DSjnmB7MPDJiUiJ6kHfoniTcak59sUxfwAC1cMgHpLbFUbjmKCeus495k",
@@ -123,7 +123,7 @@
     "leader_software_client": "HarmonicFrankendancer",
     "leader_software_client_id": 11,
     "compute_unit_price_microlamports": 300000,
-    "estimated_spend_lamports": 5198
+    "transaction_fee_lamports": 5198
   },
   {
     "signature": "5fy1L5wWes8m7uZGdumuYfTKxKMi8TKLNYTjUrkBswDBF816zJmpWF1FciThcyvi6k9iHeCSdkSpSJWcHrFWSzQG",
@@ -144,7 +144,7 @@
     "leader_software_client": "HarmonicFrankendancer",
     "leader_software_client_id": 11,
     "compute_unit_price_microlamports": 0,
-    "estimated_spend_lamports": 5000
+    "transaction_fee_lamports": 5000
   },
   {
     "signature": "5qCdxBjMucNKx439qzJAVWtbS9stCNth7VXRS8qf1bC5h5rKSRNAh8ifx3oEtJVkWfT2dezwXJaz4VXHLpm7oq5Q",
@@ -165,7 +165,7 @@
     "leader_software_client": "HarmonicFrankendancer",
     "leader_software_client_id": 11,
     "compute_unit_price_microlamports": 300000,
-    "estimated_spend_lamports": 5198
+    "transaction_fee_lamports": 5198
   },
   {
     "signature": "5xzJiGXyntzrudgKGG8HcpG4QCor371qFZK9egUVwWJkyVB3ohDiPwyxwuWzApyQLa6YAEP7Qr8rMGk8iD3xgwcv",
@@ -186,7 +186,7 @@
     "leader_software_client": "HarmonicAgave",
     "leader_software_client_id": 10,
     "compute_unit_price_microlamports": 300000,
-    "estimated_spend_lamports": 5198
+    "transaction_fee_lamports": 5198
   },
   {
     "signature": "rYVAXkgq3PkEE5TVipESJXgHuURgJ26qYLD3zkG9xP9cCVDhk8Hejf4NKZ4KiiG7jfbfm459ck91F5SiCvE5wxd",
@@ -207,7 +207,7 @@
     "leader_software_client": "HarmonicAgave",
     "leader_software_client_id": 10,
     "compute_unit_price_microlamports": 300000,
-    "estimated_spend_lamports": 5198
+    "transaction_fee_lamports": 5198
   },
   {
     "signature": "4VvJqpCGdJ5HxYHaZ4pUMJRSK2DPdLYEcKNHFCJuEtEDz3bVc2PhSUNzCvKf6GSmbusUxS61Gz4x5JDEjswGVGsC",
@@ -228,7 +228,7 @@
     "leader_software_client": "AgaveBam",
     "leader_software_client_id": 6,
     "compute_unit_price_microlamports": 0,
-    "estimated_spend_lamports": 5000
+    "transaction_fee_lamports": 5000
   },
   {
     "signature": "5bDRKykFCN2jFdFe7JcKKLSeEmwEQXE7BgDSkfSbWmhAJtw3ZiJzcW2iQ44Di3n6nDNXjSzJLXPuwYueBGh1y5E3",
@@ -249,6 +249,6 @@
     "leader_software_client": "JitoLabs",
     "leader_software_client_id": 1,
     "compute_unit_price_microlamports": 0,
-    "estimated_spend_lamports": 5000
+    "transaction_fee_lamports": 5000
   }
 ]

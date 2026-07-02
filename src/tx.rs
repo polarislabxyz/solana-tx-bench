@@ -29,23 +29,10 @@ pub struct BenchTx {
     pub base_fee_lamports: u64,
     pub priority_fee_lamports: u64,
     pub transaction_fee_lamports: u64,
-    /// Deprecated compatibility alias for the signed transaction fee only.
-    /// Route-added tips are tracked separately from route result metadata.
-    pub estimated_spend_lamports: u64,
 }
 
 pub fn load_keypair(path: &Path) -> Result<Keypair> {
     read_keypair_file(path).map_err(|err| anyhow::anyhow!("read keypair {}: {err}", path.display()))
-}
-
-pub fn estimate_spend_lamports(
-    compute_unit_limit: u32,
-    compute_unit_price_microlamports: u64,
-    route_tip_lamports: u64,
-) -> u64 {
-    TransactionCost::one_signature(compute_unit_limit, compute_unit_price_microlamports)
-        .transaction_fee_lamports
-        .saturating_add(route_tip_lamports)
 }
 
 pub fn build_transactions(
@@ -69,21 +56,21 @@ pub fn build_transactions_with_blockhash(
     blockhash: Hash,
 ) -> Result<Vec<BenchTx>> {
     let mut out = Vec::with_capacity(count);
-    let mut estimated_total = 0_u64;
+    let mut transaction_fee_total = 0_u64;
     for iteration in 0..count {
-        let estimated_spend = transaction_cost(config).transaction_fee_lamports;
+        let transaction_fee = transaction_cost(config).transaction_fee_lamports;
         if let Some(max) = max_spend_lamports {
-            if estimated_total.saturating_add(estimated_spend) > max {
+            if transaction_fee_total.saturating_add(transaction_fee) > max {
                 bail!(
-                    "spend cap exceeded before tx {iteration}: estimated_next_total={} max={max}",
-                    estimated_total.saturating_add(estimated_spend)
+                    "spend cap exceeded before tx {iteration}: next_transaction_fee_total={} max={max}",
+                    transaction_fee_total.saturating_add(transaction_fee)
                 );
             }
         }
         out.push(build_transaction_with_blockhash(
             config, payer, iteration, blockhash,
         )?);
-        estimated_total = estimated_total.saturating_add(estimated_spend);
+        transaction_fee_total = transaction_fee_total.saturating_add(transaction_fee);
     }
     Ok(out)
 }
@@ -133,11 +120,10 @@ pub fn build_transaction_with_blockhash(
         base_fee_lamports: cost.base_fee_lamports,
         priority_fee_lamports: cost.priority_fee_lamports,
         transaction_fee_lamports: cost.transaction_fee_lamports,
-        estimated_spend_lamports: cost.transaction_fee_lamports,
     })
 }
 
-pub fn estimated_transaction_spend(config: &TxBuildConfig) -> u64 {
+pub fn transaction_fee_lamports(config: &TxBuildConfig) -> u64 {
     transaction_cost(config).transaction_fee_lamports
 }
 
@@ -204,7 +190,7 @@ mod tests {
             compute_unit_limit: 20_000,
             compute_unit_price_microlamports: 500_000,
         };
-        let one_tx = estimate_spend_lamports(20_000, 500_000, 0);
+        let one_tx = TransactionCost::one_signature(20_000, 500_000).transaction_fee_lamports;
         let err =
             build_transactions_with_blockhash(&config, &payer, 2, Some(one_tx), Hash::new_unique())
                 .expect_err("cap should reject second tx");

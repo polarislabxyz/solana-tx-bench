@@ -89,7 +89,7 @@ Yellowstone slot updates and sends from that stream instead of polling
 `getSlot`. It uses captured `getLeaderSlots` snapshots for leader identity,
 client, and geography metadata, refreshing those snapshots when the gRPC slot
 stream approaches the cached horizon. `rpc_poll` remains available only as a
-legacy/debug trigger.
+debug trigger.
 
 The runner groups contiguous slots with the same leader and sends only once per
 observed leader run. Each transaction is signed just-in-time with a fresh
@@ -103,7 +103,7 @@ small burst into the same leader window.
 
 When `--capture-leader-slots` is set, the runner writes
 `leader-slots-snapshot-<start_slot>.json` refresh files, and
-`leader-slots-snapshot.json` for legacy `rpc_poll` runs. Those JSON-RPC
+`leader-slots-snapshot.json` for `rpc_poll` runs. Those JSON-RPC
 responses are the portable enrichment source for leader geography, validator
 client, route hints, and historical landing-latency priors. Store them with the
 benchmark artifacts; a later report should use the saved snapshots rather than
@@ -147,9 +147,10 @@ tests only:
      `HarmonicFrankendancer` / ID `11`: `only: [tpu_quic, harmonic_bundle]`
    - all other or unknown clients: `only: [tpu_quic]`
 
-`client_aware` remains as a legacy strategy keyed only by normalized
-`client.family`. It is kept for old report reproducibility, but new benchmark
-runs should prefer `always_race` and `software_client_aware`.
+`client_aware` is the coarse strategy keyed only by normalized
+`client.family`. Use `software_client_aware` when the saved leader snapshot has
+software-client IDs; use `client_aware` only when that richer metadata is not
+available.
 
 Run `software_client_aware` as a smoke test with:
 

@@ -12,7 +12,7 @@ use crate::{
     },
     slot_signal::{spawn_grpc_slot_signal, GrpcSlotSignalConfig, SlotSignal},
     tx::{
-        build_transaction_with_blockhash, estimated_transaction_spend, load_keypair, BenchTx,
+        build_transaction_with_blockhash, load_keypair, transaction_fee_lamports, BenchTx,
         TxBuildConfig,
     },
 };
@@ -133,7 +133,6 @@ pub struct LeaderSendEvent {
     pub leader_run_end_slot: u64,
     pub send_slot: u64,
     pub sent_at: DateTime<Utc>,
-    #[serde(default)]
     pub trigger_source: String,
     pub slot_signal_status: Option<String>,
     pub slot_signal_observed_at: Option<DateTime<Utc>>,
@@ -143,21 +142,12 @@ pub struct LeaderSendEvent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leader_software_client_id: Option<u16>,
     pub route_policy: Option<String>,
-    #[serde(default)]
     pub selected_routes: Vec<String>,
-    #[serde(default)]
     pub compute_unit_limit: u32,
-    #[serde(default)]
     pub compute_unit_price_microlamports: u64,
-    #[serde(default)]
     pub base_fee_lamports: u64,
-    #[serde(default)]
     pub priority_fee_lamports: u64,
-    #[serde(default)]
     pub transaction_fee_lamports: u64,
-    /// Deprecated compatibility alias for `transaction_fee_lamports`.
-    #[serde(default)]
-    pub estimated_spend_lamports: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -286,7 +276,7 @@ pub async fn run_leader_paced(
     let mut sent_runs = HashSet::<(String, u64)>::new();
     let mut samples = Vec::<BenchSample>::new();
     let mut sends = Vec::<LeaderSendEvent>::new();
-    let mut estimated_spent = 0_u64;
+    let mut transaction_fee_spent = 0_u64;
     let mut iteration = 0_usize;
 
     let mut slot_rx = match options.trigger.clone() {
@@ -354,20 +344,21 @@ pub async fn run_leader_paced(
                         compute_unit_limit: config.compute_unit_limit,
                         compute_unit_price_microlamports,
                     };
-                    let estimated_next =
-                        estimated_spent.saturating_add(estimated_transaction_spend(&tx_config));
+                    let next_transaction_fee_total =
+                        transaction_fee_spent.saturating_add(transaction_fee_lamports(&tx_config));
                     if let Some(max) = config.max_spend_lamports {
-                        if estimated_next > max {
+                        if next_transaction_fee_total > max {
                             bail!(
-                                "spend cap exceeded before tx {iteration}: estimated_next_total={} max={max}",
-                                estimated_next
+                                "spend cap exceeded before tx {iteration}: next_transaction_fee_total={} max={max}",
+                                next_transaction_fee_total
                             );
                         }
                     }
 
                     let tx =
                         build_transaction_with_blockhash(&tx_config, &payer, iteration, blockhash)?;
-                    estimated_spent = estimated_spent.saturating_add(tx.transaction_fee_lamports);
+                    transaction_fee_spent =
+                        transaction_fee_spent.saturating_add(tx.transaction_fee_lamports);
                     pending.push(PendingLeaderTx {
                         tx,
                         iteration,
@@ -418,7 +409,6 @@ pub async fn run_leader_paced(
                     base_fee_lamports: pending_tx.tx.base_fee_lamports,
                     priority_fee_lamports: pending_tx.tx.priority_fee_lamports,
                     transaction_fee_lamports: pending_tx.tx.transaction_fee_lamports,
-                    estimated_spend_lamports: pending_tx.tx.estimated_spend_lamports,
                 };
                 serde_json::to_writer(&mut leader_sends, &event)
                     .context("write leader send event")?;
@@ -630,7 +620,6 @@ async fn send_one_transaction_to_providers(
                 base_fee_lamports,
                 priority_fee_lamports,
                 transaction_fee_lamports,
-                tx.estimated_spend_lamports,
                 ack,
             )
         })

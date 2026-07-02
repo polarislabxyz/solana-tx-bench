@@ -134,7 +134,6 @@ pub async fn run_benchmark(config: BenchConfig) -> Result<BenchRunOutput> {
                 tx.base_fee_lamports,
                 tx.priority_fee_lamports,
                 tx.transaction_fee_lamports,
-                tx.estimated_spend_lamports,
                 ack,
             );
             writer.write_sample(&sample)?;

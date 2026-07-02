@@ -101,7 +101,7 @@ testing burst behavior.
 
 By default, `run-leader-paced` is driven by the RPCEdge Yellowstone gRPC slot
 stream (`--slot-trigger grpc_slot`). This avoids `getSlot` polling for send
-timing. `--slot-trigger rpc_poll` exists only as a legacy/debug fallback.
+timing. `--slot-trigger rpc_poll` exists only as a debug fallback.
 
 `--capture-leader-slots` calls JSON-RPC `getLeaderSlots` before the run and
 writes `leader-slots-snapshot.json` beside the samples. When pointed at
@@ -276,8 +276,8 @@ iteration number to the transfer amount so every transaction has a unique
 signature without Memo program compute overhead. It still spends Solana fees and
 any priority fee you configure.
 
-Always set `max_spend_lamports`. This is only a local estimated fee cap; it is
-not a replacement for using a throwaway keypair with tiny funds.
+Always set `max_spend_lamports`. This is only a local transaction-fee cap; it
+is not a replacement for using a throwaway keypair with tiny funds.
 
 ## Example Config
 

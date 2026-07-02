@@ -64,10 +64,6 @@ pub struct RunComparisonSummary {
     pub avg_route_tip_landed_lamports: Option<f64>,
     pub avg_total_generated_spend_lamports: Option<f64>,
     pub avg_total_landed_spend_lamports: Option<f64>,
-    /// Deprecated compatibility alias for generated route tips.
-    pub avg_route_tip_lamports: Option<f64>,
-    /// Deprecated compatibility alias for generated total spend.
-    pub avg_total_spend_lamports: Option<f64>,
     pub max_slots: Option<i64>,
     pub min_slots: Option<i64>,
     pub same_slot_landed: usize,
@@ -415,8 +411,6 @@ fn load_run_from_inputs(
         avg_route_tip_landed_lamports: avg(&route_tips_landed),
         avg_total_generated_spend_lamports: avg(&total_generated_spends),
         avg_total_landed_spend_lamports: avg(&total_landed_spends),
-        avg_route_tip_lamports: avg(&route_tips_generated),
-        avg_total_spend_lamports: avg(&total_generated_spends),
         max_slots: primary.slot_deltas.iter().max().copied(),
         min_slots: primary.slot_deltas.iter().min().copied(),
         same_slot_landed,
@@ -491,21 +485,11 @@ fn cost_rows(
 
             let base_fee_lamports = send
                 .map(|send| send.base_fee_lamports)
-                .filter(|value| *value > 0)
-                .or_else(|| {
-                    sample
-                        .map(|sample| sample.base_fee_lamports)
-                        .filter(|value| *value > 0)
-                })
+                .or_else(|| sample.map(|sample| sample.base_fee_lamports))
                 .unwrap_or(5_000);
             let priority_fee_lamports = send
                 .map(|send| send.priority_fee_lamports)
-                .filter(|value| *value > 0)
-                .or_else(|| {
-                    sample
-                        .map(|sample| sample.priority_fee_lamports)
-                        .filter(|value| *value > 0)
-                })
+                .or_else(|| sample.map(|sample| sample.priority_fee_lamports))
                 .unwrap_or_else(|| {
                     let (limit, price) = send
                         .map(|send| {
@@ -527,12 +511,7 @@ fn cost_rows(
                 });
             let transaction_fee_lamports = send
                 .map(|send| send.transaction_fee_lamports)
-                .filter(|value| *value > 0)
-                .or_else(|| {
-                    sample
-                        .map(|sample| sample.transaction_fee_lamports)
-                        .filter(|value| *value > 0)
-                })
+                .or_else(|| sample.map(|sample| sample.transaction_fee_lamports))
                 .unwrap_or_else(|| base_fee_lamports.saturating_add(priority_fee_lamports));
 
             let mut route_tip_generated_lamports = 0_u64;
@@ -1150,14 +1129,14 @@ mod tests {
         fs::write(
             path.join("samples.ndjson"),
             format!(
-                "{{\"schema_version\":2,\"test_id\":\"{test_id}\",\"iteration\":0,\"signature\":\"sig-{test_id}\",\"provider_name\":\"p\",\"provider_kind\":\"rpcedge_quic_raw_tx\",\"accepted\":true,\"client_started_at\":\"2026-01-01T00:00:00Z\",\"client_finished_at\":\"2026-01-01T00:00:00.001Z\",\"client_ack_latency_us\":1000,\"provider_send_started_at\":\"2026-01-01T00:00:00Z\",\"provider_send_finished_at\":\"2026-01-01T00:00:00.001Z\",\"provider_ack_latency_us\":1000,\"provider_request_id\":null,\"returned_signature\":\"sig-{test_id}\",\"status_code\":200,\"error_class\":null,\"error\":null,\"route_policy\":\"static\",\"route_mode\":\"only\",\"selected_routes\":[\"tpu_quic\"],\"leader_client_family\":\"jito\",\"compute_unit_limit\":660,\"compute_unit_price_microlamports\":0,\"estimated_spend_lamports\":5000}}\n"
+                "{{\"schema_version\":2,\"test_id\":\"{test_id}\",\"iteration\":0,\"signature\":\"sig-{test_id}\",\"provider_name\":\"p\",\"provider_kind\":\"rpcedge_quic_raw_tx\",\"accepted\":true,\"client_started_at\":\"2026-01-01T00:00:00Z\",\"client_finished_at\":\"2026-01-01T00:00:00.001Z\",\"client_ack_latency_us\":1000,\"provider_send_started_at\":\"2026-01-01T00:00:00Z\",\"provider_send_finished_at\":\"2026-01-01T00:00:00.001Z\",\"provider_ack_latency_us\":1000,\"provider_request_id\":null,\"returned_signature\":\"sig-{test_id}\",\"status_code\":200,\"error_class\":null,\"error\":null,\"route_policy\":\"static\",\"route_mode\":\"only\",\"selected_routes\":[\"tpu_quic\"],\"leader_client_family\":\"jito\",\"compute_unit_limit\":660,\"compute_unit_price_microlamports\":0,\"base_fee_lamports\":5000,\"priority_fee_lamports\":0,\"transaction_fee_lamports\":5000}}\n"
             ),
         )
         .expect("samples");
         fs::write(
             path.join("leader-sends.ndjson"),
             format!(
-                "{{\"schema_version\":2,\"test_id\":\"{test_id}\",\"iteration\":0,\"signature\":\"sig-{test_id}\",\"leader_identity\":\"leader\",\"leader_run_start_slot\":{send_slot},\"leader_run_end_slot\":{},\"send_slot\":{send_slot},\"sent_at\":\"2026-01-01T00:00:00Z\",\"trigger_source\":\"grpc_slot\",\"slot_signal_status\":null,\"slot_signal_observed_at\":null,\"leader_client_family\":\"jito\",\"route_policy\":\"static\",\"selected_routes\":[\"tpu_quic\"],\"compute_unit_limit\":660,\"compute_unit_price_microlamports\":0,\"estimated_spend_lamports\":5000}}\n",
+                "{{\"schema_version\":2,\"test_id\":\"{test_id}\",\"iteration\":0,\"signature\":\"sig-{test_id}\",\"leader_identity\":\"leader\",\"leader_run_start_slot\":{send_slot},\"leader_run_end_slot\":{},\"send_slot\":{send_slot},\"sent_at\":\"2026-01-01T00:00:00Z\",\"trigger_source\":\"grpc_slot\",\"slot_signal_status\":null,\"slot_signal_observed_at\":null,\"leader_client_family\":\"jito\",\"route_policy\":\"static\",\"selected_routes\":[\"tpu_quic\"],\"compute_unit_limit\":660,\"compute_unit_price_microlamports\":0,\"base_fee_lamports\":5000,\"priority_fee_lamports\":0,\"transaction_fee_lamports\":5000}}\n",
                 send_slot + 3
             ),
         )
@@ -1177,16 +1156,16 @@ mod tests {
         fs::write(
             path.join("samples.ndjson"),
             concat!(
-                "{\"schema_version\":3,\"test_id\":\"paired\",\"iteration\":0,\"signature\":\"sig-tpu\",\"comparison_group_id\":\"group-1\",\"policy_arm\":\"tpu_quic_only\",\"policy_arm_index\":0,\"provider_name\":\"p\",\"provider_kind\":\"rpcedge_quic_raw_tx\",\"accepted\":true,\"client_started_at\":\"2026-01-01T00:00:00Z\",\"client_finished_at\":\"2026-01-01T00:00:00.001Z\",\"client_ack_latency_us\":1000,\"provider_send_started_at\":\"2026-01-01T00:00:00Z\",\"provider_send_finished_at\":\"2026-01-01T00:00:00.001Z\",\"provider_ack_latency_us\":1000,\"provider_request_id\":null,\"returned_signature\":\"sig-tpu\",\"status_code\":200,\"error_class\":null,\"error\":null,\"route_policy\":\"tpu_quic_only\",\"route_mode\":\"only\",\"selected_routes\":[\"tpu_quic\"],\"leader_client_family\":\"jito\",\"compute_unit_limit\":660,\"compute_unit_price_microlamports\":0,\"estimated_spend_lamports\":5000}\n",
-                "{\"schema_version\":3,\"test_id\":\"paired\",\"iteration\":1,\"signature\":\"sig-race\",\"comparison_group_id\":\"group-1\",\"policy_arm\":\"always_race\",\"policy_arm_index\":1,\"provider_name\":\"p\",\"provider_kind\":\"rpcedge_quic_raw_tx\",\"accepted\":true,\"client_started_at\":\"2026-01-01T00:00:00Z\",\"client_finished_at\":\"2026-01-01T00:00:00.001Z\",\"client_ack_latency_us\":1000,\"provider_send_started_at\":\"2026-01-01T00:00:00Z\",\"provider_send_finished_at\":\"2026-01-01T00:00:00.001Z\",\"provider_ack_latency_us\":1000,\"provider_request_id\":null,\"returned_signature\":\"sig-race\",\"status_code\":200,\"error_class\":null,\"error\":null,\"route_policy\":\"always_race\",\"route_mode\":\"only\",\"selected_routes\":[\"tpu_quic\",\"jito_bundle\",\"harmonic_bundle\"],\"leader_client_family\":\"jito\",\"compute_unit_limit\":660,\"compute_unit_price_microlamports\":300000,\"estimated_spend_lamports\":5001}\n"
+                "{\"schema_version\":3,\"test_id\":\"paired\",\"iteration\":0,\"signature\":\"sig-tpu\",\"comparison_group_id\":\"group-1\",\"policy_arm\":\"tpu_quic_only\",\"policy_arm_index\":0,\"provider_name\":\"p\",\"provider_kind\":\"rpcedge_quic_raw_tx\",\"accepted\":true,\"client_started_at\":\"2026-01-01T00:00:00Z\",\"client_finished_at\":\"2026-01-01T00:00:00.001Z\",\"client_ack_latency_us\":1000,\"provider_send_started_at\":\"2026-01-01T00:00:00Z\",\"provider_send_finished_at\":\"2026-01-01T00:00:00.001Z\",\"provider_ack_latency_us\":1000,\"provider_request_id\":null,\"returned_signature\":\"sig-tpu\",\"status_code\":200,\"error_class\":null,\"error\":null,\"route_policy\":\"tpu_quic_only\",\"route_mode\":\"only\",\"selected_routes\":[\"tpu_quic\"],\"leader_client_family\":\"jito\",\"compute_unit_limit\":660,\"compute_unit_price_microlamports\":0,\"base_fee_lamports\":5000,\"priority_fee_lamports\":0,\"transaction_fee_lamports\":5000}\n",
+                "{\"schema_version\":3,\"test_id\":\"paired\",\"iteration\":1,\"signature\":\"sig-race\",\"comparison_group_id\":\"group-1\",\"policy_arm\":\"always_race\",\"policy_arm_index\":1,\"provider_name\":\"p\",\"provider_kind\":\"rpcedge_quic_raw_tx\",\"accepted\":true,\"client_started_at\":\"2026-01-01T00:00:00Z\",\"client_finished_at\":\"2026-01-01T00:00:00.001Z\",\"client_ack_latency_us\":1000,\"provider_send_started_at\":\"2026-01-01T00:00:00Z\",\"provider_send_finished_at\":\"2026-01-01T00:00:00.001Z\",\"provider_ack_latency_us\":1000,\"provider_request_id\":null,\"returned_signature\":\"sig-race\",\"status_code\":200,\"error_class\":null,\"error\":null,\"route_policy\":\"always_race\",\"route_mode\":\"only\",\"selected_routes\":[\"tpu_quic\",\"jito_bundle\",\"harmonic_bundle\"],\"leader_client_family\":\"jito\",\"compute_unit_limit\":660,\"compute_unit_price_microlamports\":300000,\"base_fee_lamports\":5000,\"priority_fee_lamports\":198,\"transaction_fee_lamports\":5198}\n"
             ),
         )
         .expect("samples");
         fs::write(
             path.join("leader-sends.ndjson"),
             concat!(
-                "{\"schema_version\":3,\"test_id\":\"paired\",\"iteration\":0,\"signature\":\"sig-tpu\",\"comparison_group_id\":\"group-1\",\"policy_arm\":\"tpu_quic_only\",\"policy_arm_index\":0,\"leader_identity\":\"leader\",\"leader_run_start_slot\":100,\"leader_run_end_slot\":103,\"send_slot\":100,\"sent_at\":\"2026-01-01T00:00:00Z\",\"trigger_source\":\"grpc_slot\",\"slot_signal_status\":null,\"slot_signal_observed_at\":null,\"leader_client_family\":\"jito\",\"route_policy\":\"tpu_quic_only\",\"selected_routes\":[\"tpu_quic\"],\"compute_unit_limit\":660,\"compute_unit_price_microlamports\":0,\"estimated_spend_lamports\":5000}\n",
-                "{\"schema_version\":3,\"test_id\":\"paired\",\"iteration\":1,\"signature\":\"sig-race\",\"comparison_group_id\":\"group-1\",\"policy_arm\":\"always_race\",\"policy_arm_index\":1,\"leader_identity\":\"leader\",\"leader_run_start_slot\":100,\"leader_run_end_slot\":103,\"send_slot\":100,\"sent_at\":\"2026-01-01T00:00:00Z\",\"trigger_source\":\"grpc_slot\",\"slot_signal_status\":null,\"slot_signal_observed_at\":null,\"leader_client_family\":\"jito\",\"route_policy\":\"always_race\",\"selected_routes\":[\"tpu_quic\",\"jito_bundle\",\"harmonic_bundle\"],\"compute_unit_limit\":660,\"compute_unit_price_microlamports\":300000,\"estimated_spend_lamports\":5001}\n"
+                "{\"schema_version\":3,\"test_id\":\"paired\",\"iteration\":0,\"signature\":\"sig-tpu\",\"comparison_group_id\":\"group-1\",\"policy_arm\":\"tpu_quic_only\",\"policy_arm_index\":0,\"leader_identity\":\"leader\",\"leader_run_start_slot\":100,\"leader_run_end_slot\":103,\"send_slot\":100,\"sent_at\":\"2026-01-01T00:00:00Z\",\"trigger_source\":\"grpc_slot\",\"slot_signal_status\":null,\"slot_signal_observed_at\":null,\"leader_client_family\":\"jito\",\"route_policy\":\"tpu_quic_only\",\"selected_routes\":[\"tpu_quic\"],\"compute_unit_limit\":660,\"compute_unit_price_microlamports\":0,\"base_fee_lamports\":5000,\"priority_fee_lamports\":0,\"transaction_fee_lamports\":5000}\n",
+                "{\"schema_version\":3,\"test_id\":\"paired\",\"iteration\":1,\"signature\":\"sig-race\",\"comparison_group_id\":\"group-1\",\"policy_arm\":\"always_race\",\"policy_arm_index\":1,\"leader_identity\":\"leader\",\"leader_run_start_slot\":100,\"leader_run_end_slot\":103,\"send_slot\":100,\"sent_at\":\"2026-01-01T00:00:00Z\",\"trigger_source\":\"grpc_slot\",\"slot_signal_status\":null,\"slot_signal_observed_at\":null,\"leader_client_family\":\"jito\",\"route_policy\":\"always_race\",\"selected_routes\":[\"tpu_quic\",\"jito_bundle\",\"harmonic_bundle\"],\"compute_unit_limit\":660,\"compute_unit_price_microlamports\":300000,\"base_fee_lamports\":5000,\"priority_fee_lamports\":198,\"transaction_fee_lamports\":5198}\n"
             ),
         )
         .expect("sends");

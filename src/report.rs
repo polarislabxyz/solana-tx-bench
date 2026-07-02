@@ -133,8 +133,6 @@ pub struct TailEvent {
     pub route_tip_landed_lamports: Option<u64>,
     pub total_generated_spend_lamports: Option<u64>,
     pub total_landed_spend_lamports: Option<u64>,
-    /// Deprecated compatibility alias for transaction fee only.
-    pub estimated_spend_lamports: Option<u64>,
     pub leader_identity: String,
     pub leader_region: String,
     pub leader_city: String,
@@ -573,21 +571,11 @@ fn cost_rows_by_signature(
 
             let base_fee_lamports = send
                 .map(|send| send.base_fee_lamports)
-                .filter(|value| *value > 0)
-                .or_else(|| {
-                    sample
-                        .map(|sample| sample.base_fee_lamports)
-                        .filter(|value| *value > 0)
-                })
+                .or_else(|| sample.map(|sample| sample.base_fee_lamports))
                 .unwrap_or(5_000);
             let priority_fee_lamports = send
                 .map(|send| send.priority_fee_lamports)
-                .filter(|value| *value > 0)
-                .or_else(|| {
-                    sample
-                        .map(|sample| sample.priority_fee_lamports)
-                        .filter(|value| *value > 0)
-                })
+                .or_else(|| sample.map(|sample| sample.priority_fee_lamports))
                 .unwrap_or_else(|| {
                     let (limit, price) = send
                         .map(|send| {
@@ -609,12 +597,7 @@ fn cost_rows_by_signature(
                 });
             let transaction_fee_lamports = send
                 .map(|send| send.transaction_fee_lamports)
-                .filter(|value| *value > 0)
-                .or_else(|| {
-                    sample
-                        .map(|sample| sample.transaction_fee_lamports)
-                        .filter(|value| *value > 0)
-                })
+                .or_else(|| sample.map(|sample| sample.transaction_fee_lamports))
                 .unwrap_or_else(|| base_fee_lamports.saturating_add(priority_fee_lamports));
 
             let mut route_tip_generated_lamports = 0_u64;
@@ -939,9 +922,6 @@ fn summarize_tail_events(
             let compute_unit_price_microlamports = sample
                 .map(|sample| sample.compute_unit_price_microlamports)
                 .or_else(|| send.map(|send| send.compute_unit_price_microlamports));
-            let estimated_spend_lamports = sample
-                .map(|sample| sample.estimated_spend_lamports)
-                .or_else(|| send.map(|send| send.estimated_spend_lamports));
             let cost = cost_by_signature.get(&row.event.signature);
 
             TailEvent {
@@ -975,7 +955,6 @@ fn summarize_tail_events(
                 total_generated_spend_lamports: cost
                     .map(|cost| cost.total_generated_spend_lamports),
                 total_landed_spend_lamports: cost.map(|cost| cost.total_landed_spend_lamports),
-                estimated_spend_lamports,
                 leader_identity: row.leader.identity.clone(),
                 leader_region: row.leader.region.clone(),
                 leader_city: row.leader.city.clone(),
@@ -1381,7 +1360,7 @@ fn write_tail_artifacts(artifact_dir: &Path, tail_events: &[TailEvent]) -> Resul
 
 fn tail_events_csv(rows: &[TailEvent]) -> String {
     let mut out = String::new();
-    out.push_str("signature,source_name,latency_ms,policy_arm,route_policy,selected_routes,send_slot,send_leader_identity,send_leader_city,send_leader_client,landed_slot,landed_leader_identity,landed_leader_city,landed_leader_client,first_observed_slot_index,processed_slot_index,compute_unit_price_microlamports,base_fee_lamports,priority_fee_lamports,transaction_fee_lamports,route_tip_generated_lamports,route_tip_landed_lamports,total_generated_spend_lamports,total_landed_spend_lamports,estimated_spend_lamports,comparison_group_id\n");
+    out.push_str("signature,source_name,latency_ms,policy_arm,route_policy,selected_routes,send_slot,send_leader_identity,send_leader_city,send_leader_client,landed_slot,landed_leader_identity,landed_leader_city,landed_leader_client,first_observed_slot_index,processed_slot_index,compute_unit_price_microlamports,base_fee_lamports,priority_fee_lamports,transaction_fee_lamports,route_tip_generated_lamports,route_tip_landed_lamports,total_generated_spend_lamports,total_landed_spend_lamports,comparison_group_id\n");
     for row in rows {
         let fields = [
             row.signature.clone(),
@@ -1422,9 +1401,6 @@ fn tail_events_csv(rows: &[TailEvent]) -> String {
                 .map(|value| value.to_string())
                 .unwrap_or_default(),
             row.total_landed_spend_lamports
-                .map(|value| value.to_string())
-                .unwrap_or_default(),
-            row.estimated_spend_lamports
                 .map(|value| value.to_string())
                 .unwrap_or_default(),
             row.comparison_group_id.clone().unwrap_or_default(),
@@ -1548,12 +1524,12 @@ mod tests {
         let root = dir.path();
         fs::write(
             root.join("samples.ndjson"),
-            r#"{"schema_version":2,"test_id":"run-a","iteration":0,"signature":"sig-a","provider_name":"p","provider_kind":"rpcedge_quic_raw_tx","accepted":true,"client_started_at":"2026-01-01T00:00:00Z","client_finished_at":"2026-01-01T00:00:00.001Z","client_ack_latency_us":1000,"provider_send_started_at":"2026-01-01T00:00:00Z","provider_send_finished_at":"2026-01-01T00:00:00.001Z","provider_ack_latency_us":1000,"provider_request_id":"run-a-0","returned_signature":"sig-a","status_code":200,"error_class":null,"error":null,"route_policy":"static","route_mode":"only","selected_routes":["tpu_quic"],"leader_client_family":"jito","compute_unit_limit":660,"compute_unit_price_microlamports":0,"estimated_spend_lamports":5000}"#,
+            r#"{"schema_version":2,"test_id":"run-a","iteration":0,"signature":"sig-a","provider_name":"p","provider_kind":"rpcedge_quic_raw_tx","accepted":true,"client_started_at":"2026-01-01T00:00:00Z","client_finished_at":"2026-01-01T00:00:00.001Z","client_ack_latency_us":1000,"provider_send_started_at":"2026-01-01T00:00:00Z","provider_send_finished_at":"2026-01-01T00:00:00.001Z","provider_ack_latency_us":1000,"provider_request_id":"run-a-0","returned_signature":"sig-a","status_code":200,"error_class":null,"error":null,"route_policy":"static","route_mode":"only","selected_routes":["tpu_quic"],"leader_client_family":"jito","compute_unit_limit":660,"compute_unit_price_microlamports":0,"base_fee_lamports":5000,"priority_fee_lamports":0,"transaction_fee_lamports":5000}"#,
         )
         .expect("samples");
         fs::write(
             root.join("leader-sends.ndjson"),
-            r#"{"schema_version":2,"test_id":"run-a","iteration":0,"signature":"sig-a","leader_identity":"leader-a","leader_run_start_slot":100,"leader_run_end_slot":103,"send_slot":100,"sent_at":"2026-01-01T00:00:00Z","trigger_source":"grpc_slot","slot_signal_status":"SLOT_FIRST_SHRED_RECEIVED","slot_signal_observed_at":"2026-01-01T00:00:00Z","leader_client_family":"jito","route_policy":"static","selected_routes":["tpu_quic"],"compute_unit_limit":660,"compute_unit_price_microlamports":0,"estimated_spend_lamports":5000}"#,
+            r#"{"schema_version":2,"test_id":"run-a","iteration":0,"signature":"sig-a","leader_identity":"leader-a","leader_run_start_slot":100,"leader_run_end_slot":103,"send_slot":100,"sent_at":"2026-01-01T00:00:00Z","trigger_source":"grpc_slot","slot_signal_status":"SLOT_FIRST_SHRED_RECEIVED","slot_signal_observed_at":"2026-01-01T00:00:00Z","leader_client_family":"jito","route_policy":"static","selected_routes":["tpu_quic"],"compute_unit_limit":660,"compute_unit_price_microlamports":0,"base_fee_lamports":5000,"priority_fee_lamports":0,"transaction_fee_lamports":5000}"#,
         )
         .expect("sends");
         fs::write(
@@ -1633,12 +1609,12 @@ mod tests {
         let root = dir.path();
         fs::write(
             root.join("samples.ndjson"),
-            r#"{"schema_version":4,"test_id":"run-tip","iteration":0,"signature":"caller-sig","provider_name":"p","provider_kind":"rpcedge_quic_raw_tx","accepted":true,"client_started_at":"2026-01-01T00:00:00Z","client_finished_at":"2026-01-01T00:00:00.001Z","client_ack_latency_us":1000,"provider_send_started_at":"2026-01-01T00:00:00Z","provider_send_finished_at":"2026-01-01T00:00:00.001Z","provider_ack_latency_us":1000,"provider_request_id":"run-tip-0","returned_signature":"caller-sig","status_code":200,"error_class":null,"error":null,"route_policy":"always_race","route_mode":"only","selected_routes":["tpu_quic","jito_bundle"],"leader_client_family":"jito","compute_unit_limit":660,"compute_unit_price_microlamports":300000,"base_fee_lamports":5000,"priority_fee_lamports":198,"transaction_fee_lamports":5198,"estimated_spend_lamports":5198,"route_results":[{"route":"jito_bundle","route_name":"jito_bundle","provider":"jito","accepted":true,"latency_us":100,"bundle_id":"bundle-1","route_tip_signature":"tip-sig","route_tip_lamports":1000,"route_tip_account":"tip-account"}]}"#,
+            r#"{"schema_version":4,"test_id":"run-tip","iteration":0,"signature":"caller-sig","provider_name":"p","provider_kind":"rpcedge_quic_raw_tx","accepted":true,"client_started_at":"2026-01-01T00:00:00Z","client_finished_at":"2026-01-01T00:00:00.001Z","client_ack_latency_us":1000,"provider_send_started_at":"2026-01-01T00:00:00Z","provider_send_finished_at":"2026-01-01T00:00:00.001Z","provider_ack_latency_us":1000,"provider_request_id":"run-tip-0","returned_signature":"caller-sig","status_code":200,"error_class":null,"error":null,"route_policy":"always_race","route_mode":"only","selected_routes":["tpu_quic","jito_bundle"],"leader_client_family":"jito","compute_unit_limit":660,"compute_unit_price_microlamports":300000,"base_fee_lamports":5000,"priority_fee_lamports":198,"transaction_fee_lamports":5198,"route_results":[{"route":"jito_bundle","route_name":"jito_bundle","provider":"jito","accepted":true,"latency_us":100,"bundle_id":"bundle-1","route_tip_signature":"tip-sig","route_tip_lamports":1000,"route_tip_account":"tip-account"}]}"#,
         )
         .expect("samples");
         fs::write(
             root.join("leader-sends.ndjson"),
-            r#"{"schema_version":4,"test_id":"run-tip","iteration":0,"signature":"caller-sig","leader_identity":"leader-a","leader_run_start_slot":100,"leader_run_end_slot":103,"send_slot":100,"sent_at":"2026-01-01T00:00:00Z","trigger_source":"grpc_slot","slot_signal_status":"SLOT_FIRST_SHRED_RECEIVED","slot_signal_observed_at":"2026-01-01T00:00:00Z","leader_client_family":"jito","route_policy":"always_race","selected_routes":["tpu_quic","jito_bundle"],"compute_unit_limit":660,"compute_unit_price_microlamports":300000,"base_fee_lamports":5000,"priority_fee_lamports":198,"transaction_fee_lamports":5198,"estimated_spend_lamports":5198}"#,
+            r#"{"schema_version":4,"test_id":"run-tip","iteration":0,"signature":"caller-sig","leader_identity":"leader-a","leader_run_start_slot":100,"leader_run_end_slot":103,"send_slot":100,"sent_at":"2026-01-01T00:00:00Z","trigger_source":"grpc_slot","slot_signal_status":"SLOT_FIRST_SHRED_RECEIVED","slot_signal_observed_at":"2026-01-01T00:00:00Z","leader_client_family":"jito","route_policy":"always_race","selected_routes":["tpu_quic","jito_bundle"],"compute_unit_limit":660,"compute_unit_price_microlamports":300000,"base_fee_lamports":5000,"priority_fee_lamports":198,"transaction_fee_lamports":5198}"#,
         )
         .expect("sends");
         fs::write(

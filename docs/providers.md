@@ -86,9 +86,9 @@ overrides the route set per transaction using the scheduled leader's
 The selected route policy and selected route list are written to
 `samples.ndjson` and `leader-sends.ndjson`.
 
-The older `client_aware` strategy is still available for old report
-reproducibility, but it uses only normalized `client.family` and is too coarse
-for BAM/Rakurai/Raiku semantics.
+The `client_aware` strategy uses only normalized `client.family`, so it is too
+coarse for BAM/Rakurai/Raiku semantics. Prefer `software_client_aware` when the
+leader snapshot includes software-client IDs.
 
 Single-policy `run-leader-paced` invocations are route smoke tests. They are not
 valid A/B comparisons against other policies unless the artifacts come from a
