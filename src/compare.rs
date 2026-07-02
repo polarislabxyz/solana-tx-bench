@@ -379,6 +379,9 @@ fn read_manifest(artifact_dir: &Path) -> Result<Option<BenchManifest>> {
 }
 
 fn select_source(observations: &[ObservationEvent], requested: &str) -> String {
+    if matches!(requested, "first_observed" | "first-observed") {
+        return "first_observed".to_string();
+    }
     if observations
         .iter()
         .any(|event| event.source_name == requested)
@@ -401,7 +404,7 @@ fn source_stats(
     let mut first_by_signature = BTreeMap::<String, &ObservationEvent>::new();
     for event in observations
         .iter()
-        .filter(|event| event.source_name == source)
+        .filter(|event| source == "first_observed" || event.source_name == source)
     {
         first_by_signature
             .entry(event.signature.clone())
@@ -662,17 +665,13 @@ fn comparison_markdown(output: &ComparisonOutput) -> String {
     out.push_str("## Methodology\n\n");
     out.push_str(methodology_text());
     out.push_str("\n\n## Comparison\n\n");
-    out.push_str("| Run | Routes | Avg ACK ms | P90 ACK ms | Avg Deshred ms | P90 Deshred ms | Avg Landed ms | P90 Landed ms | Avg Landed slots | P90 Landed slots | Avg Idx-in-Block | P90 Idx-in-Block | Avg Priority Fee | Max Slots | Min Slots | Same-slot landed | Landed runs | Block seen | Total runs | Success ratio % | Performance rate % |\n");
-    out.push_str("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
+    out.push_str("| Run | Routes | Avg First-Observed ms | P90 First-Observed ms | Avg Landed slots | P90 Landed slots | Avg Idx-in-Block | P90 Idx-in-Block | Avg Priority Fee | Max Slots | Min Slots | Same-slot landed | Landed runs | Block seen | Total runs | Success ratio % | Performance rate % |\n");
+    out.push_str("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
     for run in &output.runs {
         out.push_str(&format!(
-            "| `{}` | `{}` | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {:.2} | {:.2} |\n",
+            "| `{}` | `{}` | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {:.2} | {:.2} |\n",
             run.label,
             run.routes,
-            fmt_f64(run.avg_ack_ms),
-            fmt_f64(run.p90_ack_ms),
-            fmt_f64(run.avg_deshred_ms),
-            fmt_f64(run.p90_deshred_ms),
             fmt_f64(run.avg_landed_ms),
             fmt_f64(run.p90_landed_ms),
             fmt_f64(run.avg_landed_slots),
@@ -711,7 +710,7 @@ fn comparison_markdown(output: &ComparisonOutput) -> String {
 }
 
 fn methodology_text() -> &'static str {
-    "Scores follow a Beam/RPCFast-style shape but use RPCEdge artifacts: landing proof comes from matched processed/deshred observations by signature, not provider ACK. Lower-is-better metrics are normalized relative to the best run in the comparison set. Landing latency and landed slots weight p90 at 80% and average at 20%. Block position weights average and p90 equally. Same-slot and success use rates so runs with different counts remain comparable. The final performance rate is the unweighted average of the five bucket scores. Only compare runs with the same transaction shape, trigger mode, sender region, and fee/tip policy; otherwise treat the score as descriptive rather than a claim."
+    "Landing proof comes from matched observations by transaction signature, not provider ACK. By default, landing latency uses the first observed stream event for each signature; processed metadata is still used for block position because deshred observations do not carry a transaction index. Lower-is-better metrics are normalized relative to the best run in the comparison set. Landing latency and landed slots weight p90 at 80% and average at 20%. Block position weights average and p90 equally. Same-slot and success use rates so runs with different counts remain comparable. The final performance rate is the unweighted average of the five bucket scores. Only compare runs with the same transaction shape, trigger mode, sender region, and fee/tip policy; otherwise treat the score as descriptive rather than a claim."
 }
 
 fn comparison_html(output: &ComparisonOutput) -> String {
@@ -783,16 +782,12 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.nowrap{white-space:no
         html_escape(methodology_text())
     ));
 
-    out.push_str("<h2>Comparison</h2><table><thead><tr><th>Run</th><th>Routes</th><th>Avg ACK ms</th><th>P90 ACK ms</th><th>Avg Deshred ms</th><th>P90 Deshred ms</th><th>Avg Landed ms</th><th>P90 Landed ms</th><th>Avg Landed slots</th><th>P90 Landed slots</th><th>Avg Idx</th><th>P90 Idx</th><th>Avg Priority Fee</th><th>Max Slots</th><th>Min Slots</th><th>Same-slot</th><th>Landed</th><th>Block seen</th><th>Total</th><th>Success %</th><th>Score %</th></tr></thead><tbody>");
+    out.push_str("<h2>Comparison</h2><table><thead><tr><th>Run</th><th>Routes</th><th>Avg First-Observed ms</th><th>P90 First-Observed ms</th><th>Avg Landed slots</th><th>P90 Landed slots</th><th>Avg Idx</th><th>P90 Idx</th><th>Avg Priority Fee</th><th>Max Slots</th><th>Min Slots</th><th>Same-slot</th><th>Landed</th><th>Block seen</th><th>Total</th><th>Success %</th><th>Score %</th></tr></thead><tbody>");
     for run in &output.runs {
         out.push_str(&format!(
-            "<tr><td class=\"left\"><code>{}</code></td><td class=\"left\"><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{:.2}</td><td><b>{:.2}</b></td></tr>",
+            "<tr><td class=\"left\"><code>{}</code></td><td class=\"left\"><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{:.2}</td><td><b>{:.2}</b></td></tr>",
             html_escape(&run.label),
             html_escape(&run.routes),
-            fmt_f64(run.avg_ack_ms),
-            fmt_f64(run.p90_ack_ms),
-            fmt_f64(run.avg_deshred_ms),
-            fmt_f64(run.p90_deshred_ms),
             fmt_f64(run.avg_landed_ms),
             fmt_f64(run.p90_landed_ms),
             fmt_f64(run.avg_landed_slots),

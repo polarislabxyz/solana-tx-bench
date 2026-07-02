@@ -109,7 +109,7 @@ enum Command {
         labels: Vec<String>,
         #[arg(long)]
         output_dir: PathBuf,
-        #[arg(long, default_value = "rpcedge_processed")]
+        #[arg(long, default_value = "first_observed")]
         primary_source: String,
         #[arg(long, default_value = "Transaction Landing Comparison")]
         title: String,

@@ -312,10 +312,11 @@ estimate rather than mixing it into exact cost-normalized scores.
 
 ## Comparison Scoring
 
-The `compare` command uses a Beam/RPCFast-style scoring model, with one
-important boundary: provider ACK is shown as a diagnostic column only. Landing
-truth comes from matched Yellowstone processed/deshred observations by
-signature.
+The `compare` command uses the RPCEdge landing score. Provider ACK is retained
+in raw artifacts for diagnostics only. Landing truth comes from matched stream
+observations by signature. By default, landing latency uses the first observed
+stream event for each signature; processed metadata is still used for block
+position because deshred observations do not carry a transaction index.
 
 The score has five buckets:
 

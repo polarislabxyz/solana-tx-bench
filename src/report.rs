@@ -181,6 +181,7 @@ pub fn generate_report(artifact_dir: &Path) -> Result<ReportOutput> {
             }
         })
         .collect::<Vec<_>>();
+    let landing_rows = first_observed_rows(&rows);
 
     let report = ReportOutput {
         schema_version: 1,
@@ -199,9 +200,9 @@ pub fn generate_report(artifact_dir: &Path) -> Result<ReportOutput> {
             leader_slot_snapshots: snapshots.len(),
         },
         provider_summaries: summarize_providers(&samples, manifest.as_ref()),
-        source_summaries: summarize_sources(&rows),
-        cohort_summaries: summarize_cohorts(&rows),
-        tail_events: summarize_tail_events(&rows, 12),
+        source_summaries: summarize_sources(&landing_rows),
+        cohort_summaries: summarize_cohorts(&landing_rows),
+        tail_events: summarize_tail_events(&landing_rows, 12),
     };
 
     fs::write(
@@ -215,6 +216,21 @@ pub fn generate_report(artifact_dir: &Path) -> Result<ReportOutput> {
         .with_context(|| format!("write {}", artifact_dir.join("report.html").display()))?;
 
     Ok(report)
+}
+
+fn first_observed_rows(rows: &[ObservationRow]) -> Vec<ObservationRow> {
+    let mut first_by_signature = BTreeMap::<String, &ObservationRow>::new();
+    for row in rows {
+        first_by_signature
+            .entry(row.event.signature.clone())
+            .and_modify(|existing| {
+                if row.event.observed_at < existing.event.observed_at {
+                    *existing = row;
+                }
+            })
+            .or_insert(row);
+    }
+    first_by_signature.into_values().cloned().collect()
 }
 
 fn read_ndjson<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<Vec<T>> {
@@ -625,35 +641,15 @@ fn report_markdown(report: &ReportOutput) -> String {
     ));
     out.push_str("This report is generated only from local benchmark artifacts. Leader metadata comes from saved `getLeaderSlots` snapshots captured during the run; no ClickHouse or private database join is required.\n\n");
 
-    out.push_str("## Provider ACK\n\n");
-    out.push_str("| Provider | Policy | Routes | Count | Accepted | Errors | p50 ms | p90 ms | p99 ms | max ms |\n");
-    out.push_str("| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
-    for row in &report.provider_summaries {
-        out.push_str(&format!(
-            "| `{}` | `{}` | `{}` | {} | {} | {} | {} | {} | {} | {} |\n",
-            row.provider_name,
-            row.route_policy,
-            row.selected_routes.join(","),
-            row.count,
-            row.accepted,
-            row.errors,
-            fmt_ms(row.ack_p50_ms),
-            fmt_ms(row.ack_p90_ms),
-            fmt_ms(row.ack_p99_ms),
-            fmt_ms(row.ack_max_ms),
-        ));
-    }
-    out.push_str("\nProvider ACK is a sender diagnostic, not landing proof.\n\n");
-
-    out.push_str("## Observation Sources\n\n");
-    out.push_str("| Source | Count | First seen | p50 ms | p90 ms | p99 ms | max ms | same-slot | slot delta p50 | slot index p50 |\n");
+    out.push_str("## Landing Observations\n\n");
+    out.push_str("Landing latency uses the earliest observation per transaction across configured streams. In normal RPCEdge runs this should be the deshred stream; processed metadata is only counted here when it is the first or only observation for a signature.\n\n");
+    out.push_str("| First source | Count | p50 ms | p90 ms | p99 ms | max ms | same-slot | slot delta p50 | slot index p50 |\n");
     out.push_str("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
     for row in &report.source_summaries {
         out.push_str(&format!(
-            "| `{}` | {} | {} | {} | {} | {} | {} | {} / {:.1}% | {} | {} |\n",
+            "| `{}` | {} | {} | {} | {} | {} | {} / {:.1}% | {} | {} |\n",
             row.source_name,
             row.count,
-            row.first_seen,
             fmt_ms(row.submit_to_observed_p50_ms),
             fmt_ms(row.submit_to_observed_p90_ms),
             fmt_ms(row.submit_to_observed_p99_ms),
@@ -712,6 +708,25 @@ fn report_markdown(report: &ReportOutput) -> String {
             row.leader_client,
         ));
     }
+    out.push_str("\n## Appendix: Sender ACK Diagnostics\n\n");
+    out.push_str("ACK confirms that the relay accepted or rejected the request. It is useful for route availability and gateway health debugging, but it is not landing proof and is not used as a performance target.\n\n");
+    out.push_str("| Provider | Policy | Routes | Count | Accepted | Errors | p50 ms | p90 ms | p99 ms | max ms |\n");
+    out.push_str("| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
+    for row in &report.provider_summaries {
+        out.push_str(&format!(
+            "| `{}` | `{}` | `{}` | {} | {} | {} | {} | {} | {} | {} |\n",
+            row.provider_name,
+            row.route_policy,
+            row.selected_routes.join(","),
+            row.count,
+            row.accepted,
+            row.errors,
+            fmt_ms(row.ack_p50_ms),
+            fmt_ms(row.ack_p90_ms),
+            fmt_ms(row.ack_p99_ms),
+            fmt_ms(row.ack_max_ms),
+        ));
+    }
     out
 }
 
@@ -763,31 +778,13 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.note{background:#fff;
     out.push_str("</div>");
     out.push_str("<div class=\"note\">Generated only from local benchmark artifacts. Leader metadata comes from saved <code>getLeaderSlots</code> snapshots captured during the run; no ClickHouse or private database join is required.</div>");
 
-    out.push_str("<h2>Provider ACK</h2><table><thead><tr><th>Provider</th><th>Policy</th><th>Routes</th><th>Count</th><th>Accepted</th><th>Errors</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>max ms</th></tr></thead><tbody>");
-    for row in &report.provider_summaries {
-        out.push_str(&format!(
-            "<tr><td class=\"left\"><code>{}</code></td><td><code>{}</code></td><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
-            html_escape(&row.provider_name),
-            html_escape(&row.route_policy),
-            html_escape(&row.selected_routes.join(",")),
-            row.count,
-            row.accepted,
-            row.errors,
-            fmt_ms(row.ack_p50_ms),
-            fmt_ms(row.ack_p90_ms),
-            fmt_ms(row.ack_p99_ms),
-            fmt_ms(row.ack_max_ms),
-        ));
-    }
-    out.push_str("</tbody></table><p class=\"muted\">Provider ACK is a sender diagnostic, not landing proof.</p>");
-
-    out.push_str("<h2>Observation Sources</h2><table><thead><tr><th>Source</th><th>Count</th><th>First seen</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>max ms</th><th>same-slot</th><th>slot delta p50</th><th>slot index p50</th></tr></thead><tbody>");
+    out.push_str("<h2>Landing Observations</h2><p class=\"muted\">Landing latency uses the earliest observation per transaction across configured streams. In normal RPCEdge runs this should be the deshred stream; processed metadata is only counted here when it is the first or only observation for a signature.</p>");
+    out.push_str("<table><thead><tr><th>First source</th><th>Count</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>max ms</th><th>same-slot</th><th>slot delta p50</th><th>slot index p50</th></tr></thead><tbody>");
     for row in &report.source_summaries {
         out.push_str(&format!(
-            "<tr><td class=\"left\"><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{} / {:.1}%</td><td>{}</td><td>{}</td></tr>",
+            "<tr><td class=\"left\"><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{} / {:.1}%</td><td>{}</td><td>{}</td></tr>",
             html_escape(&row.source_name),
             row.count,
-            row.first_seen,
             fmt_ms(row.submit_to_observed_p50_ms),
             fmt_ms(row.submit_to_observed_p90_ms),
             fmt_ms(row.submit_to_observed_p99_ms),
@@ -847,7 +844,25 @@ code{background:#eef1f4;padding:1px 4px;border-radius:4px}.note{background:#fff;
             html_escape(&row.leader_client),
         ));
     }
-    out.push_str("</tbody></table></main></body></html>");
+    out.push_str("</tbody></table>");
+
+    out.push_str("<details><summary><b>Sender ACK diagnostics</b></summary><p class=\"muted\">ACK confirms that the relay accepted or rejected the request. It is useful for route availability and gateway health debugging, but it is not landing proof and is not used as a performance target.</p><table><thead><tr><th>Provider</th><th>Policy</th><th>Routes</th><th>Count</th><th>Accepted</th><th>Errors</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>max ms</th></tr></thead><tbody>");
+    for row in &report.provider_summaries {
+        out.push_str(&format!(
+            "<tr><td class=\"left\"><code>{}</code></td><td><code>{}</code></td><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            html_escape(&row.provider_name),
+            html_escape(&row.route_policy),
+            html_escape(&row.selected_routes.join(",")),
+            row.count,
+            row.accepted,
+            row.errors,
+            fmt_ms(row.ack_p50_ms),
+            fmt_ms(row.ack_p90_ms),
+            fmt_ms(row.ack_p99_ms),
+            fmt_ms(row.ack_max_ms),
+        ));
+    }
+    out.push_str("</tbody></table></details></main></body></html>");
     out
 }
 

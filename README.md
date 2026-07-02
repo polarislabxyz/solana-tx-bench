@@ -43,7 +43,6 @@ required for the benchmarker.
 
 Planned adapter examples:
 
-- RPCFast
 - Astralane
 - Helius Sender
 - Harmonic
@@ -233,10 +232,10 @@ cargo run --release -- compare \
 ```
 
 The compare command writes `comparison.json`, `comparison.md`, `comparison.html`,
-and `index.html` for GitHub Pages. It uses a Beam/RPCFast-style score across
-landing milliseconds, landed slots, block position, same-slot rate, and success
-ratio. Provider ACK remains a diagnostic column and is not used as landing
-proof.
+and `index.html` for GitHub Pages. It uses an RPCEdge landing score across
+first-observed landing milliseconds, landed slots, processed block position,
+same-slot rate, and success ratio. Provider ACK is retained in raw artifacts for
+diagnostics, but it is not landing proof and is not part of the score.
 
 Collect matched observations from RPCEdge Yellowstone processed + SubscribeDeshred:
 

@@ -134,7 +134,6 @@ tip cost unless that route-attempt data or route-detailed ACK data is present.
 External provider adapters should be added as isolated config variants. Good
 candidate examples:
 
-- RPCFast;
 - Astralane;
 - Helius Sender;
 - Harmonic.
