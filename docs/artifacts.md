@@ -279,9 +279,11 @@ When an RPCEdge QUIC provider is configured with `route_results: true`,
 Route-tip generated spend is not the same as landed route-tip spend. Generated
 means the relay returned a tip transaction signature for the route. Landed means
 that signature appears in `matched-observations.ndjson`. Because RPCEdge
-observation subscriptions are account-filtered, include known relay Jito tip
-accounts with `run-leader-paced --observation-account <pubkey>` when you want
-the report to count landed route-tip spend.
+observation subscriptions are account-filtered, the collector subscribes to the
+benchmark payer plus built-in provider observer accounts. Jito's tip accounts
+are built in. Add accounts to the provider observer list when adding another
+tip-based sender adapter, or pass `--observation-account <pubkey>` for a
+one-off private account.
 
 ## comparison.json / comparison.md / comparison.html / index.html
 

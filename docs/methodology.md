@@ -239,9 +239,10 @@ Reports separate:
 If route-tip telemetry is absent, cost ranking is incomplete for any arm that
 includes `jito_bundle`. If route-tip telemetry exists but the stream does not
 observe the tip signature, the generated cost is visible but landed route-tip
-cost remains zero. Include known relay Jito tip accounts with
-`run-leader-paced --observation-account <pubkey>` when landed route-tip
-attribution matters.
+cost remains zero. The RPCEdge collector includes the Jito `getTipAccounts`
+accounts automatically. Use `run-leader-paced --observation-account <pubkey>`
+only for custom/private provider accounts that are not in the built-in provider
+observer list.
 
 Retries and intentional resends are not part of the route-policy baseline.
 The baseline measures one signed transaction per policy arm from the same gRPC

@@ -2,9 +2,10 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use solana_tx_bench::{
     collect_rpcedge_observations, generate_comparison, generate_report,
-    observation_summary_markdown, run_benchmark, run_leader_paced, summarize_observations,
-    BenchConfig, CompareOptions, LeaderPacedOptions, LeaderPacedRouteStrategy, LeaderPacedTrigger,
-    LeaderSlotsCaptureConfig, ObservationEvent, RpcEdgeCollectConfig, RpcEdgeLeaderCollector,
+    observation_summary_markdown, provider_observers::add_default_provider_observation_accounts,
+    run_benchmark, run_leader_paced, summarize_observations, BenchConfig, CompareOptions,
+    LeaderPacedOptions, LeaderPacedRouteStrategy, LeaderPacedTrigger, LeaderSlotsCaptureConfig,
+    ObservationEvent, RpcEdgeCollectConfig, RpcEdgeLeaderCollector,
 };
 use std::{
     fs,
@@ -264,6 +265,8 @@ async fn main() -> Result<()> {
             });
             let output_dir =
                 output_dir.unwrap_or_else(|| PathBuf::from("artifacts").join(&test_id));
+            let mut account_include = account_include;
+            add_default_provider_observation_accounts(&mut account_include);
             let output = collect_rpcedge_observations(RpcEdgeCollectConfig {
                 test_id,
                 endpoint,

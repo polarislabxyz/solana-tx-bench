@@ -150,11 +150,12 @@ provider to request bounded route-result ACKs. When the relay returns
 `route_tip_signature`, `route_tip_lamports`, and `route_tip_account`, reports
 show the route-added Jito tip as generated spend. They count it as landed spend
 only if the tip signature is observed in the benchmark streams. Since the stream
-subscription is account-filtered, pass known relay tip accounts with
-`run-leader-paced --observation-account <pubkey>` when landed Jito-tip cost is
-part of the analysis. If route-tip fields are absent, arms that include
-`jito_bundle` can still be compared on landing quality, but their full economic
-cost is unknown.
+subscription is account-filtered, the benchmarker includes Jito tip accounts in
+the observer filter automatically. If a future adapter adds another tip-based
+sender such as Naozomi or Astralane, add that provider's tip/settlement
+accounts to the built-in provider observer list. If route-tip fields are absent,
+arms that include `jito_bundle` can still be compared on landing quality, but
+their full economic cost is unknown.
 
 ## Rakurai / Raiku
 

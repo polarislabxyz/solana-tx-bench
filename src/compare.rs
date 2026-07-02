@@ -190,7 +190,7 @@ fn comparison_warnings(runs: &[RunComparisonSummary]) -> Vec<String> {
             .sum::<f64>();
         if generated_tip > 0.0 && landed_tip <= 0.0 {
             warnings.push(
-                "Jito route-tip signatures were returned by the relay, but none were observed in matched streams. Add the relay Jito tip accounts with --observation-account to count landed route-tip spend.".to_string(),
+                "Jito route-tip signatures were returned by the relay, but none were observed in matched streams. The benchmarker includes Jito tip accounts automatically; verify the observation collector was enabled and route-tip signatures were present in the stream window.".to_string(),
             );
         }
     }

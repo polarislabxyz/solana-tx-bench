@@ -10,6 +10,7 @@ use crate::{
         observation_summary_markdown, summarize_observations, MatchedObservationSummary,
         ObservationEvent,
     },
+    provider_observers::add_default_provider_observation_accounts,
     slot_signal::{spawn_grpc_slot_signal, GrpcSlotSignalConfig, SlotSignal},
     tx::{
         build_transaction_with_blockhash, load_keypair, transaction_fee_lamports, BenchTx,
@@ -257,6 +258,7 @@ pub async fn run_leader_paced(
         let output_dir = writer.run_dir.join("rpcedge-observations");
         let duration = options.duration + options.observe_extra;
         let mut account_include = vec![payer.pubkey().to_string()];
+        add_default_provider_observation_accounts(&mut account_include);
         account_include.extend(options.extra_observation_accounts.iter().cloned());
         account_include.sort();
         account_include.dedup();

@@ -7,6 +7,7 @@ pub mod cost;
 pub mod leader_paced;
 pub mod leader_slots;
 pub mod observations;
+pub mod provider_observers;
 pub mod report;
 pub mod runner;
 pub mod slot_signal;
