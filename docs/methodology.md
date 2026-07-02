@@ -199,16 +199,26 @@ metadata, but it is broad enough that it can mark most scheduled stake as Jito
 related. Route-policy experiments should be based on explicit policies and
 observable outcomes, not on assuming `jito=true` means "always use Jito".
 
-Route-policy baselines must use the same transaction shape, compute-unit limit,
-and compute-unit price across every policy arm. Do not change priority fee
-because a route includes Harmonic or Jito. Harmonic-specific CU-price ladders
-belong in a separate explicit fee experiment, not the baseline comparison.
+Uniform route-policy baselines must use the same transaction shape, compute-unit
+limit, and compute-unit price across every policy arm. Cost-aware route-policy
+runs may instead pass
+`--client-aware-harmonic-cu-price-microlamports 300000`; then any transaction
+whose selected route set includes `harmonic_bundle` is signed with at least that
+CU price and the extra cost is recorded in the artifacts.
 
-As of the current Harmonic public docs, Harmonic does not describe a fixed
-minimum priority-fee floor. It describes Harmonic tips as normal Solana
-compute-unit priority fees, with no separate tip instruction. Record live
-rejects explicitly; do not claim a provider minimum unless Harmonic publishes
-one or repeated live tests prove one.
+Harmonic public docs describe Harmonic tips as normal Solana compute-unit
+priority fees, with no separate tip instruction. Live RPCEdge provider rejects
+on 2026-07-02 established the current operational gate:
+
+```text
+priority fee >= 10000 lamports OR average CU price >= 300000 micro-lamports/CU
+```
+
+For the benchmark's 660-CU transfer shape, `300000` micro-lamports/CU costs
+`ceil(660 * 300000 / 1_000_000) = 198` lamports of priority fee, so it is the
+minimal Harmonic-eligible setting we use for cost-aware Harmonic arms. This fee
+must be present before signing; RPCEdge cannot add it to an already signed
+customer transaction without invalidating the signature.
 
 For Jito leaders, `jito_bundle` is an internal RPCEdge route in this benchmark.
 The relay adds the Jito bundle tip transaction when the route executes. The

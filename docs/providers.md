@@ -114,12 +114,27 @@ arm.
 
 Harmonic bundles use ordinary Solana compute-unit priority fees as the economic
 signal. There is no Jito-style transfer to a tip account for Harmonic, and the
-current public docs do not state a fixed minimum priority-fee floor.
+current public docs describe the tip as the normal Solana CU price.
 
-Benchmark implication: configure the Harmonic CU price explicitly, record it in
-the config, keep that same CU price across every route-policy baseline arm, and
-treat live provider rejects as evidence. Do not document a fixed Harmonic
-minimum unless Harmonic publishes one or repeated live tests establish one.
+Live RPCEdge provider rejects on 2026-07-02 showed the current Harmonic server
+gate:
+
+```text
+priority fee >= 10000 lamports OR avg CU price >= 300000 micro-lamports/CU
+```
+
+For the default benchmark transfer shape (`compute_unit_limit: 660`), the cheap
+qualifying value is:
+
+```text
+ceil(660 * 300000 / 1_000_000) = 198 lamports priority fee
+```
+
+Benchmark implication: uniform baselines keep the same CU price across every
+arm. Harmonic-eligible strategy runs should pass
+`--client-aware-harmonic-cu-price-microlamports 300000`, which raises only
+transactions whose selected route set includes `harmonic_bundle`; the resulting
+cost must be reported with the landing result.
 
 ## Jito Bundle Route
 

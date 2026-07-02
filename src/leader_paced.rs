@@ -870,11 +870,24 @@ fn comparison_group_id_for(
 
 fn compute_unit_price_for_selection(
     config: &BenchConfig,
-    _options: &LeaderPacedOptions,
-    _route_selection: Option<&RouteSelection>,
+    options: &LeaderPacedOptions,
+    route_selection: Option<&RouteSelection>,
 ) -> u64 {
-    // Route-policy baselines must keep fee settings uniform across all arms.
-    // The Harmonic override field is retained for a future explicit fee ladder.
+    if let (Some(min_harmonic_cu_price), Some(selection)) = (
+        options.client_aware_harmonic_cu_price_microlamports,
+        route_selection,
+    ) {
+        if selection
+            .routes
+            .iter()
+            .any(|route| route == "harmonic_bundle")
+        {
+            return config
+                .compute_unit_price_microlamports
+                .max(min_harmonic_cu_price);
+        }
+    }
+
     config.compute_unit_price_microlamports
 }
 
@@ -1297,7 +1310,7 @@ mod tests {
     }
 
     #[test]
-    fn route_selection_keeps_uniform_configured_cu_price() {
+    fn route_selection_applies_explicit_harmonic_min_cu_price() {
         let config = BenchConfig {
             compute_unit_price_microlamports: 0,
             ..BenchConfig::default()
@@ -1319,12 +1332,22 @@ mod tests {
         let selection = RouteSelection::only("always_race", ["tpu_quic", "harmonic_bundle"]);
         assert_eq!(
             compute_unit_price_for_selection(&config, &options, Some(&selection)),
-            0
+            300_000
         );
         let selection = RouteSelection::only("tpu_quic_only", ["tpu_quic"]);
         assert_eq!(
             compute_unit_price_for_selection(&config, &options, Some(&selection)),
             0
+        );
+
+        let config = BenchConfig {
+            compute_unit_price_microlamports: 500_000,
+            ..BenchConfig::default()
+        };
+        let selection = RouteSelection::only("harmonic", ["harmonic_bundle"]);
+        assert_eq!(
+            compute_unit_price_for_selection(&config, &options, Some(&selection)),
+            500_000
         );
     }
 
