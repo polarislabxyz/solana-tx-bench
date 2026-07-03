@@ -334,16 +334,25 @@ fn load_run_from_inputs(
         "rpcedge_processed",
     );
 
-    let mut ack_latencies_ms = samples
-        .iter()
-        .filter(|sample| sample.accepted)
-        .map(|sample| sample.provider_ack_latency_us as f64 / 1000.0)
+    let samples_by_signature = samples_by_signature(&samples);
+    let mut ack_latencies_ms = samples_by_signature
+        .values()
+        .filter_map(|rows| {
+            rows.iter()
+                .filter(|sample| sample.accepted)
+                .map(|sample| sample.provider_ack_latency_us)
+                .min()
+        })
+        .map(|ack_us| ack_us as f64 / 1000.0)
         .collect::<Vec<_>>();
     ack_latencies_ms.sort_by(f64::total_cmp);
 
     let total_runs = submitted_signature_count(&samples, &sends, &caller_observations);
-    let accepted = samples.iter().filter(|sample| sample.accepted).count();
-    let errors = samples.len().saturating_sub(accepted);
+    let accepted = samples_by_signature
+        .values()
+        .filter(|rows| rows.iter().any(|sample| sample.accepted))
+        .count();
+    let errors = total_runs.saturating_sub(accepted);
 
     let cost_rows = cost_rows(&samples, &sends, &observed_signatures);
     let base_fees = cost_rows
@@ -443,6 +452,34 @@ fn submitted_signature_count(
         signatures.extend(observations.iter().map(|event| event.signature.as_str()));
     }
     signatures.len()
+}
+
+fn samples_by_signature(samples: &[BenchSample]) -> BTreeMap<String, Vec<&BenchSample>> {
+    let mut samples_by_signature = BTreeMap::<String, Vec<&BenchSample>>::new();
+    for sample in samples {
+        samples_by_signature
+            .entry(sample.signature.clone())
+            .or_default()
+            .push(sample);
+    }
+    samples_by_signature
+}
+
+fn representative_samples_by_signature(samples: &[BenchSample]) -> Vec<&BenchSample> {
+    let mut by_signature = BTreeMap::<String, &BenchSample>::new();
+    for sample in samples {
+        by_signature
+            .entry(sample.signature.clone())
+            .and_modify(|existing| {
+                let existing_attempt = existing.resend_attempt_index.unwrap_or(u16::MAX);
+                let sample_attempt = sample.resend_attempt_index.unwrap_or(u16::MAX);
+                if sample_attempt < existing_attempt {
+                    *existing = sample;
+                }
+            })
+            .or_insert(sample);
+    }
+    by_signature.into_values().collect()
 }
 
 #[derive(Debug, Clone, Default)]
@@ -657,7 +694,7 @@ fn source_stats(
 
 fn route_policy_summary(samples: &[BenchSample], manifest: Option<&BenchManifest>) -> String {
     let mut counts = BTreeMap::<String, usize>::new();
-    for sample in samples {
+    for sample in representative_samples_by_signature(samples) {
         let policy = sample
             .route_policy
             .clone()
@@ -687,7 +724,7 @@ fn route_policy_summary(samples: &[BenchSample], manifest: Option<&BenchManifest
 
 fn routes_summary(samples: &[BenchSample], manifest: Option<&BenchManifest>) -> String {
     let mut counts = BTreeMap::<String, usize>::new();
-    for sample in samples {
+    for sample in representative_samples_by_signature(samples) {
         let routes = if sample.selected_routes.is_empty() {
             String::new()
         } else {
@@ -1132,6 +1169,41 @@ mod tests {
         assert!(comparison.runs[0].p90_landed_ms < comparison.runs[1].p90_landed_ms);
     }
 
+    #[test]
+    fn comparison_deduplicates_resend_attempts_by_signature() {
+        let dir = tempdir().expect("tempdir");
+        let run = dir.path().join("resend");
+        fs::create_dir_all(&run).expect("run");
+        write_resend_run(&run);
+        let output_dir = dir.path().join("out");
+
+        let comparison = generate_comparison(CompareOptions {
+            artifact_dirs: vec![run],
+            labels: vec![],
+            output_dir,
+            primary_source: "rpcedge_processed".to_string(),
+            title: "Resend Compare".to_string(),
+        })
+        .expect("comparison");
+
+        assert_eq!(comparison.run_count, 2);
+        let race = comparison
+            .runs
+            .iter()
+            .find(|run| run.label == "always_race")
+            .expect("always race run");
+        assert_eq!(race.total_runs, 1);
+        assert_eq!(race.provider_samples, 3);
+        assert_eq!(race.accepted, 1);
+        assert_eq!(race.errors, 0);
+        assert_eq!(race.routes, "tpu_quic+jito_bundle+harmonic_bundle (1)");
+        assert_eq!(race.route_policy, "always_race (1)");
+        assert_eq!(race.avg_route_tip_generated_lamports, Some(3000.0));
+        assert_eq!(race.avg_route_tip_landed_lamports, Some(1000.0));
+        assert_eq!(race.avg_total_generated_spend_lamports, Some(8198.0));
+        assert_eq!(race.avg_total_landed_spend_lamports, Some(6198.0));
+    }
+
     fn write_run(path: &Path, test_id: &str, send_slot: u64, observed_ms: i64, slot_delta: u64) {
         fs::write(
             path.join("samples.ndjson"),
@@ -1181,6 +1253,36 @@ mod tests {
             concat!(
                 "{\"schema_version\":1,\"test_id\":\"paired\",\"signature\":\"sig-tpu\",\"source_name\":\"rpcedge_processed\",\"source_kind\":\"yellowstone_processed\",\"observed_at\":\"2026-01-01T00:00:00.300Z\",\"submitted_at\":\"2026-01-01T00:00:00Z\",\"slot\":101,\"slot_index\":90,\"source_sequence\":null}\n",
                 "{\"schema_version\":1,\"test_id\":\"paired\",\"signature\":\"sig-race\",\"source_name\":\"rpcedge_processed\",\"source_kind\":\"yellowstone_processed\",\"observed_at\":\"2026-01-01T00:00:00.100Z\",\"submitted_at\":\"2026-01-01T00:00:00Z\",\"slot\":100,\"slot_index\":10,\"source_sequence\":null}\n"
+            ),
+        )
+        .expect("observations");
+    }
+
+    fn write_resend_run(path: &Path) {
+        fs::write(
+            path.join("samples.ndjson"),
+            concat!(
+                "{\"schema_version\":5,\"test_id\":\"resend\",\"iteration\":0,\"signature\":\"sig-race\",\"comparison_group_id\":\"group-1\",\"policy_arm\":\"always_race\",\"policy_arm_index\":1,\"provider_name\":\"p\",\"provider_kind\":\"rpcedge_quic_raw_tx\",\"accepted\":true,\"client_started_at\":\"2026-01-01T00:00:00Z\",\"client_finished_at\":\"2026-01-01T00:00:00.001Z\",\"client_ack_latency_us\":1000,\"provider_send_started_at\":\"2026-01-01T00:00:00Z\",\"provider_send_finished_at\":\"2026-01-01T00:00:00.001Z\",\"provider_ack_latency_us\":1000,\"provider_request_id\":null,\"returned_signature\":\"sig-race\",\"status_code\":200,\"error_class\":null,\"error\":null,\"route_policy\":\"always_race\",\"route_mode\":\"only\",\"selected_routes\":[\"tpu_quic\",\"jito_bundle\",\"harmonic_bundle\"],\"leader_client_family\":\"jito\",\"compute_unit_limit\":660,\"compute_unit_price_microlamports\":300000,\"base_fee_lamports\":5000,\"priority_fee_lamports\":198,\"transaction_fee_lamports\":5198,\"resend_attempt_index\":0,\"resend_attempts\":3,\"resend_interval_ms\":50,\"route_results\":[{\"route\":\"jito_bundle\",\"route_name\":\"jito-frankfurt\",\"provider\":\"jito\",\"accepted\":true,\"latency_us\":10,\"error\":null,\"route_tip_signature\":\"tip-landed\",\"route_tip_lamports\":1000,\"route_tip_account\":\"tip\"}]}\n",
+                "{\"schema_version\":5,\"test_id\":\"resend\",\"iteration\":0,\"signature\":\"sig-race\",\"comparison_group_id\":\"group-1\",\"policy_arm\":\"always_race\",\"policy_arm_index\":1,\"provider_name\":\"p\",\"provider_kind\":\"rpcedge_quic_raw_tx\",\"accepted\":true,\"client_started_at\":\"2026-01-01T00:00:00Z\",\"client_finished_at\":\"2026-01-01T00:00:00.002Z\",\"client_ack_latency_us\":2000,\"provider_send_started_at\":\"2026-01-01T00:00:00Z\",\"provider_send_finished_at\":\"2026-01-01T00:00:00.002Z\",\"provider_ack_latency_us\":2000,\"provider_request_id\":null,\"returned_signature\":\"sig-race\",\"status_code\":200,\"error_class\":null,\"error\":null,\"route_policy\":\"always_race\",\"route_mode\":\"only\",\"selected_routes\":[\"tpu_quic\",\"jito_bundle\",\"harmonic_bundle\"],\"leader_client_family\":\"jito\",\"compute_unit_limit\":660,\"compute_unit_price_microlamports\":300000,\"base_fee_lamports\":5000,\"priority_fee_lamports\":198,\"transaction_fee_lamports\":5198,\"resend_attempt_index\":1,\"resend_attempts\":3,\"resend_interval_ms\":50,\"route_results\":[{\"route\":\"jito_bundle\",\"route_name\":\"jito-frankfurt\",\"provider\":\"jito\",\"accepted\":true,\"latency_us\":10,\"error\":null,\"route_tip_signature\":\"tip-missed-1\",\"route_tip_lamports\":1000,\"route_tip_account\":\"tip\"}]}\n",
+                "{\"schema_version\":5,\"test_id\":\"resend\",\"iteration\":0,\"signature\":\"sig-race\",\"comparison_group_id\":\"group-1\",\"policy_arm\":\"always_race\",\"policy_arm_index\":1,\"provider_name\":\"p\",\"provider_kind\":\"rpcedge_quic_raw_tx\",\"accepted\":true,\"client_started_at\":\"2026-01-01T00:00:00Z\",\"client_finished_at\":\"2026-01-01T00:00:00.003Z\",\"client_ack_latency_us\":3000,\"provider_send_started_at\":\"2026-01-01T00:00:00Z\",\"provider_send_finished_at\":\"2026-01-01T00:00:00.003Z\",\"provider_ack_latency_us\":3000,\"provider_request_id\":null,\"returned_signature\":\"sig-race\",\"status_code\":200,\"error_class\":null,\"error\":null,\"route_policy\":\"always_race\",\"route_mode\":\"only\",\"selected_routes\":[\"tpu_quic\",\"jito_bundle\",\"harmonic_bundle\"],\"leader_client_family\":\"jito\",\"compute_unit_limit\":660,\"compute_unit_price_microlamports\":300000,\"base_fee_lamports\":5000,\"priority_fee_lamports\":198,\"transaction_fee_lamports\":5198,\"resend_attempt_index\":2,\"resend_attempts\":3,\"resend_interval_ms\":50,\"route_results\":[{\"route\":\"jito_bundle\",\"route_name\":\"jito-frankfurt\",\"provider\":\"jito\",\"accepted\":true,\"latency_us\":10,\"error\":null,\"route_tip_signature\":\"tip-missed-2\",\"route_tip_lamports\":1000,\"route_tip_account\":\"tip\"}]}\n",
+                "{\"schema_version\":5,\"test_id\":\"resend\",\"iteration\":1,\"signature\":\"sig-tpu\",\"comparison_group_id\":\"group-1\",\"policy_arm\":\"tpu_quic_only\",\"policy_arm_index\":0,\"provider_name\":\"p\",\"provider_kind\":\"rpcedge_quic_raw_tx\",\"accepted\":true,\"client_started_at\":\"2026-01-01T00:00:00Z\",\"client_finished_at\":\"2026-01-01T00:00:00.001Z\",\"client_ack_latency_us\":1000,\"provider_send_started_at\":\"2026-01-01T00:00:00Z\",\"provider_send_finished_at\":\"2026-01-01T00:00:00.001Z\",\"provider_ack_latency_us\":1000,\"provider_request_id\":null,\"returned_signature\":\"sig-tpu\",\"status_code\":200,\"error_class\":null,\"error\":null,\"route_policy\":\"tpu_quic_only\",\"route_mode\":\"only\",\"selected_routes\":[\"tpu_quic\"],\"leader_client_family\":\"jito\",\"compute_unit_limit\":660,\"compute_unit_price_microlamports\":0,\"base_fee_lamports\":5000,\"priority_fee_lamports\":0,\"transaction_fee_lamports\":5000,\"resend_attempt_index\":0,\"resend_attempts\":1,\"resend_interval_ms\":0}\n"
+            ),
+        )
+        .expect("samples");
+        fs::write(
+            path.join("leader-sends.ndjson"),
+            concat!(
+                "{\"schema_version\":3,\"test_id\":\"resend\",\"iteration\":0,\"signature\":\"sig-race\",\"comparison_group_id\":\"group-1\",\"policy_arm\":\"always_race\",\"policy_arm_index\":1,\"leader_identity\":\"leader\",\"leader_run_start_slot\":100,\"leader_run_end_slot\":103,\"send_slot\":100,\"sent_at\":\"2026-01-01T00:00:00Z\",\"trigger_source\":\"grpc_slot\",\"slot_signal_status\":null,\"slot_signal_observed_at\":null,\"leader_client_family\":\"jito\",\"route_policy\":\"always_race\",\"selected_routes\":[\"tpu_quic\",\"jito_bundle\",\"harmonic_bundle\"],\"compute_unit_limit\":660,\"compute_unit_price_microlamports\":300000,\"base_fee_lamports\":5000,\"priority_fee_lamports\":198,\"transaction_fee_lamports\":5198}\n",
+                "{\"schema_version\":3,\"test_id\":\"resend\",\"iteration\":1,\"signature\":\"sig-tpu\",\"comparison_group_id\":\"group-1\",\"policy_arm\":\"tpu_quic_only\",\"policy_arm_index\":0,\"leader_identity\":\"leader\",\"leader_run_start_slot\":100,\"leader_run_end_slot\":103,\"send_slot\":100,\"sent_at\":\"2026-01-01T00:00:00Z\",\"trigger_source\":\"grpc_slot\",\"slot_signal_status\":null,\"slot_signal_observed_at\":null,\"leader_client_family\":\"jito\",\"route_policy\":\"tpu_quic_only\",\"selected_routes\":[\"tpu_quic\"],\"compute_unit_limit\":660,\"compute_unit_price_microlamports\":0,\"base_fee_lamports\":5000,\"priority_fee_lamports\":0,\"transaction_fee_lamports\":5000}\n"
+            ),
+        )
+        .expect("sends");
+        fs::write(
+            path.join("matched-observations.ndjson"),
+            concat!(
+                "{\"schema_version\":1,\"test_id\":\"resend\",\"signature\":\"sig-race\",\"source_name\":\"rpcedge_processed\",\"source_kind\":\"yellowstone_processed\",\"observed_at\":\"2026-01-01T00:00:00.100Z\",\"submitted_at\":\"2026-01-01T00:00:00Z\",\"slot\":100,\"slot_index\":10,\"source_sequence\":null}\n",
+                "{\"schema_version\":1,\"test_id\":\"resend\",\"signature\":\"sig-tpu\",\"source_name\":\"rpcedge_processed\",\"source_kind\":\"yellowstone_processed\",\"observed_at\":\"2026-01-01T00:00:00.300Z\",\"submitted_at\":\"2026-01-01T00:00:00Z\",\"slot\":101,\"slot_index\":90,\"source_sequence\":null}\n",
+                "{\"schema_version\":1,\"test_id\":\"resend\",\"signature\":\"tip-landed\",\"caller_signature\":\"sig-race\",\"signature_role\":\"route_tip\",\"source_name\":\"rpcedge_processed\",\"source_kind\":\"yellowstone_processed\",\"observed_at\":\"2026-01-01T00:00:00.101Z\",\"submitted_at\":\"2026-01-01T00:00:00Z\",\"slot\":100,\"slot_index\":11,\"source_sequence\":null}\n"
             ),
         )
         .expect("observations");
