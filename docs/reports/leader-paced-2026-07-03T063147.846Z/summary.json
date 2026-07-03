@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "test_id": "leader-paced-2026-07-03T063147.846Z",
+  "generated_at": "2026-07-03T07:32:19.484805440Z",
+  "total_samples": 2197,
+  "provider_summaries": [
+    {
+      "provider_name": "rpcedge-quic-frankfurt",
+      "provider_kind": "rpcedge_quic_raw_tx",
+      "count": 2197,
+      "accepted": 2197,
+      "errors": 0,
+      "min_us": 219439,
+      "p50_us": 219759,
+      "p75_us": 219889,
+      "p90_us": 220080,
+      "p95_us": 220219,
+      "p99_us": 220787,
+      "max_us": 642485
+    }
+  ]
+}

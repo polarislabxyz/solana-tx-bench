@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "test_id": "leader-paced-2026-07-03T063147.846Z",
+  "generated_at": "2026-07-03T07:32:19.482033650Z",
+  "total_observations": 5466,
+  "matched_signatures": 2733,
+  "min_sources": 2,
+  "source_summaries": [
+    {
+      "source_name": "rpcedge_deshred",
+      "source_kind": "yellowstone_deshred",
+      "observed": 2733,
+      "missing_from_matched": 0,
+      "first_seen": 2717,
+      "first_seen_share": 0.9941456275155507,
+      "submit_to_observed_min_us": 9837,
+      "submit_to_observed_p50_us": 112726,
+      "submit_to_observed_p75_us": 175491,
+      "submit_to_observed_p90_us": 227853,
+      "submit_to_observed_p95_us": 275620,
+      "submit_to_observed_p99_us": 486767,
+      "submit_to_observed_max_us": 3433319
+    },
+    {
+      "source_name": "rpcedge_processed",
+      "source_kind": "yellowstone_processed",
+      "observed": 2733,
+      "missing_from_matched": 0,
+      "first_seen": 16,
+      "first_seen_share": 0.005854372484449323,
+      "submit_to_observed_min_us": 10744,
+      "submit_to_observed_p50_us": 114060,
+      "submit_to_observed_p75_us": 176700,
+      "submit_to_observed_p90_us": 233168,
+      "submit_to_observed_p95_us": 277493,
+      "submit_to_observed_p99_us": 487430,
+      "submit_to_observed_max_us": 3434452
+    }
+  ],
+  "pair_delta_summaries": [
+    {
+      "from_source": "rpcedge_deshred",
+      "to_source": "rpcedge_processed",
+      "matched": 2733,
+      "from_wins": 2716,
+      "to_wins": 16,
+      "same_timestamp": 1,
+      "delta_us_min": -938,
+      "delta_us_p50": 1064,
+      "delta_us_p75": 1554,
+      "delta_us_p90": 2362,
+      "delta_us_p95": 3405,
+      "delta_us_p99": 10011,
+      "delta_us_max": 29065
+    }
+  ]
+}

@@ -1,0 +1,197 @@
+[
+  {
+    "signature": "2JKZEE9QanMAFSHjmkMQSTM4H4pzQ7fzjgpRkgW4DPvRF7sN8KD8xuJL8txYwfXqsjMwCqKiujfDq777GZBNXjV1",
+    "policy_arm": null,
+    "route_policy": "always_race",
+    "selected_routes": [
+      "tpu_quic",
+      "jito_bundle",
+      "harmonic_bundle"
+    ],
+    "comparison_group_id": null,
+    "sent_at": "2026-07-03T07:20:06.019618475Z",
+    "send_slot": 430475052,
+    "leader_run_start_slot": 430475052,
+    "leader_run_end_slot": 430475055,
+    "trigger_source": "grpc_slot",
+    "slot_signal_status": "SLOT_FIRST_SHRED_RECEIVED",
+    "send_leader_identity": "yJeahQNRHNWtL9Z1SqPX3SBwTYXr5ECMYYVK4uYVwxt",
+    "send_leader_region": "Europe",
+    "send_leader_city": "London",
+    "send_leader_client": "JitoLabs",
+    "provider_name": "rpcedge-quic-frankfurt",
+    "provider_attempts": 1,
+    "provider_accepted_attempts": 1,
+    "provider_ack_latency_us_min": 220204,
+    "provider_ack_latency_us_max": 220204,
+    "provider_accepted": true,
+    "provider_ack_latency_us": 220204,
+    "provider_request_id": "leader-paced-2026-07-03T063147.846Z-rpcedge-quic-frankfurt-1771",
+    "status_code": null,
+    "error_class": null,
+    "error": null,
+    "route_results_complete": true,
+    "route_results": [
+      {
+        "route": "tpu_quic",
+        "route_name": "yellowstone-tpu-frankfurt",
+        "provider": "yellowstone-tpu",
+        "accepted": true,
+        "latency_us": 23
+      },
+      {
+        "route": "jito_bundle",
+        "route_name": "jito-mainnet",
+        "provider": "jito-bundle",
+        "accepted": true,
+        "latency_us": 813,
+        "bundle_id": "8379c9fe6b1099b1a411097c16b2cb5407f66c8595068e7feaffa00c2306335a",
+        "route_tip_signature": "2os6LD6i1sgxrm323TVPEkad7W971Q7EjrXMbVzCEBFbKU5FjpyGrUr5ARsLpoosNW4GEb3QeADfF29FrA3B2tgx",
+        "route_tip_lamports": 1000,
+        "route_tip_account": "DttWaMuVvTiduZRnguLF7jNxTgiMBZ1hyAumKUiL2KRL"
+      },
+      {
+        "route": "jito_bundle",
+        "route_name": "jito-amsterdam",
+        "provider": "jito-bundle",
+        "accepted": true,
+        "latency_us": 6446,
+        "bundle_id": "d94e28ad3b005394338cc66059c083c28b51f4e572df8565890788d43c66370b",
+        "route_tip_signature": "mZGyTxmNVwRQfBBkZLAqqG5m7PTRiqAxKzDgSGhZM3aNUJfCBjw58suKPKqfAhvpETsfhCSnd7LDRhu4zKR23PW",
+        "route_tip_lamports": 1000,
+        "route_tip_account": "Cw8CFyM9FkoMi7K7Crf6HNQqf4uEMzpKw6QNghXLvLkY"
+      },
+      {
+        "route": "jito_bundle",
+        "route_name": "jito-dublin",
+        "provider": "jito-bundle",
+        "accepted": true,
+        "latency_us": 19343,
+        "bundle_id": "8379c9fe6b1099b1a411097c16b2cb5407f66c8595068e7feaffa00c2306335a",
+        "route_tip_signature": "2os6LD6i1sgxrm323TVPEkad7W971Q7EjrXMbVzCEBFbKU5FjpyGrUr5ARsLpoosNW4GEb3QeADfF29FrA3B2tgx",
+        "route_tip_lamports": 1000,
+        "route_tip_account": "DttWaMuVvTiduZRnguLF7jNxTgiMBZ1hyAumKUiL2KRL"
+      },
+      {
+        "route": "jito_bundle",
+        "route_name": "jito-frankfurt",
+        "provider": "jito-bundle",
+        "accepted": true,
+        "latency_us": 852,
+        "bundle_id": "d94e28ad3b005394338cc66059c083c28b51f4e572df8565890788d43c66370b",
+        "route_tip_signature": "mZGyTxmNVwRQfBBkZLAqqG5m7PTRiqAxKzDgSGhZM3aNUJfCBjw58suKPKqfAhvpETsfhCSnd7LDRhu4zKR23PW",
+        "route_tip_lamports": 1000,
+        "route_tip_account": "Cw8CFyM9FkoMi7K7Crf6HNQqf4uEMzpKw6QNghXLvLkY"
+      },
+      {
+        "route": "jito_bundle",
+        "route_name": "jito-london",
+        "provider": "jito-bundle",
+        "accepted": true,
+        "latency_us": 11770,
+        "bundle_id": "d94e28ad3b005394338cc66059c083c28b51f4e572df8565890788d43c66370b",
+        "route_tip_signature": "mZGyTxmNVwRQfBBkZLAqqG5m7PTRiqAxKzDgSGhZM3aNUJfCBjw58suKPKqfAhvpETsfhCSnd7LDRhu4zKR23PW",
+        "route_tip_lamports": 1000,
+        "route_tip_account": "Cw8CFyM9FkoMi7K7Crf6HNQqf4uEMzpKw6QNghXLvLkY"
+      },
+      {
+        "route": "jito_bundle",
+        "route_name": "jito-new-york",
+        "provider": "jito-bundle",
+        "accepted": true,
+        "latency_us": 75840,
+        "bundle_id": "d94e28ad3b005394338cc66059c083c28b51f4e572df8565890788d43c66370b",
+        "route_tip_signature": "mZGyTxmNVwRQfBBkZLAqqG5m7PTRiqAxKzDgSGhZM3aNUJfCBjw58suKPKqfAhvpETsfhCSnd7LDRhu4zKR23PW",
+        "route_tip_lamports": 1000,
+        "route_tip_account": "Cw8CFyM9FkoMi7K7Crf6HNQqf4uEMzpKw6QNghXLvLkY"
+      },
+      {
+        "route": "jito_bundle",
+        "route_name": "jito-salt-lake-city",
+        "provider": "jito-bundle",
+        "accepted": true,
+        "latency_us": 118034,
+        "bundle_id": "3893b65df3bcfe060407be9ab95ac8a0c94ed5681af64b896251084461296744",
+        "route_tip_signature": "rTkXHyKNiBL7F8YLyeC8qqJkExGZSKXhJLxPzLXEdiLtgVowXuQa3wK1czJSHkXKZQp9evfgi1Y9ic9Bz4VJDHs",
+        "route_tip_lamports": 1000,
+        "route_tip_account": "DfXygSm4jCyNCybVYYK6DwvWqjKee8pbDmJGcLWNDXjh"
+      },
+      {
+        "route": "jito_bundle",
+        "route_name": "jito-singapore",
+        "provider": "jito-bundle",
+        "accepted": true,
+        "latency_us": 149044,
+        "bundle_id": "d94e28ad3b005394338cc66059c083c28b51f4e572df8565890788d43c66370b",
+        "route_tip_signature": "mZGyTxmNVwRQfBBkZLAqqG5m7PTRiqAxKzDgSGhZM3aNUJfCBjw58suKPKqfAhvpETsfhCSnd7LDRhu4zKR23PW",
+        "route_tip_lamports": 1000,
+        "route_tip_account": "Cw8CFyM9FkoMi7K7Crf6HNQqf4uEMzpKw6QNghXLvLkY"
+      },
+      {
+        "route": "jito_bundle",
+        "route_name": "jito-tokyo",
+        "provider": "jito-bundle",
+        "accepted": true,
+        "latency_us": 219257,
+        "bundle_id": "63543aa7ca48f9e2077fbd0c1e889f60ab8eb085f13b17d97702d0a0cc361bb3",
+        "route_tip_signature": "3MNCLNryufYRpuxj5eXn8DJ8kB7bYNxmtGmTbtfNEx82Paw39rsynfvUu1sgB6hVWduZDn8xwFyDmvTbY1cQeVeR",
+        "route_tip_lamports": 1000,
+        "route_tip_account": "ADuUkR4vqLUMWXxW9gh6D6L8pMSawimctcNZ5pGwDcEt"
+      },
+      {
+        "route": "harmonic_bundle",
+        "route_name": "harmonic-amsterdam",
+        "provider": "harmonic-bundle",
+        "accepted": true,
+        "latency_us": 6234,
+        "bundle_id": "743e068dd212b8b0"
+      },
+      {
+        "route": "harmonic_bundle",
+        "route_name": "harmonic-newark",
+        "provider": "harmonic-bundle",
+        "accepted": true,
+        "latency_us": 75856,
+        "bundle_id": "743e068dd212b8b0"
+      },
+      {
+        "route": "harmonic_bundle",
+        "route_name": "harmonic-frankfurt",
+        "provider": "harmonic-bundle",
+        "accepted": true,
+        "latency_us": 428,
+        "bundle_id": "743e068dd212b8b0"
+      },
+      {
+        "route": "harmonic_bundle",
+        "route_name": "harmonic-london",
+        "provider": "harmonic-bundle",
+        "accepted": true,
+        "latency_us": 11585,
+        "bundle_id": "743e068dd212b8b0"
+      },
+      {
+        "route": "harmonic_bundle",
+        "route_name": "harmonic-singapore",
+        "provider": "harmonic-bundle",
+        "accepted": true,
+        "latency_us": 149222,
+        "bundle_id": "743e068dd212b8b0"
+      },
+      {
+        "route": "harmonic_bundle",
+        "route_name": "harmonic-tokyo",
+        "provider": "harmonic-bundle",
+        "accepted": true,
+        "latency_us": 213822,
+        "bundle_id": "743e068dd212b8b0"
+      }
+    ],
+    "compute_unit_price_microlamports": 300000,
+    "base_fee_lamports": 5000,
+    "priority_fee_lamports": 198,
+    "transaction_fee_lamports": 5198,
+    "route_tip_generated_lamports": 9000,
+    "total_generated_spend_lamports": 14198
+  }
+]
