@@ -491,7 +491,8 @@ impl ProviderAdapter for RpcedgeQuicRawTxAdapter {
 
     async fn warmup(&mut self) -> Result<()> {
         let mut config = QuicRelayClientConfig::new(self.endpoint, self.api_key.clone())
-            .with_timeout(self.timeout);
+            .with_timeout(self.timeout)
+            .with_max_response_bytes(64 * 1024);
         if let Some(server_name) = self.server_name.as_ref() {
             config = config.with_server_name(server_name.clone());
         }
