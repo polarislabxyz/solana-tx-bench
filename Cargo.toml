@@ -18,7 +18,7 @@ clap = { version = "4.5", features = ["derive", "env"] }
 dotenvy = "0.15"
 futures = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-rpcedge-relay-client = { git = "https://github.com/rpc-edge/rpcedge-relay-client.git", rev = "a5fede627991d4f2528a45962c3f8fbce5077b01" }
+rpcedge-relay-client = { git = "https://github.com/rpc-edge/rpcedge-relay-client.git", rev = "2589e8e175a4a3df6d07b6bafee989a0b94d4889" }
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

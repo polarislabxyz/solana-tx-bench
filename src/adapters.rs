@@ -204,10 +204,6 @@ pub struct RouteResultAck {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error_class: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_status_code: Option<u16>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_error_code: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bundle_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub route_tip_signature: Option<String>,
@@ -215,8 +211,6 @@ pub struct RouteResultAck {
     pub route_tip_lamports: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub route_tip_account: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
 }
 
 impl From<RelayRouteResultResponse> for RouteResultAck {
@@ -228,13 +222,10 @@ impl From<RelayRouteResultResponse> for RouteResultAck {
             accepted: value.accepted,
             latency_us: value.latency_us,
             error_class: value.error_class,
-            provider_status_code: value.provider_status_code,
-            provider_error_code: value.provider_error_code,
             bundle_id: value.bundle_id,
             route_tip_signature: value.route_tip_signature,
             route_tip_lamports: value.route_tip_lamports,
             route_tip_account: value.route_tip_account,
-            error: value.error,
         }
     }
 }

@@ -3130,7 +3130,7 @@ dependencies = [
 [[package]]
 name = "rpcedge-relay-client"
 version = "0.1.0"
-source = "git+https://github.com/rpc-edge/rpcedge-relay-client.git?rev=a5fede627991d4f2528a45962c3f8fbce5077b01#a5fede627991d4f2528a45962c3f8fbce5077b01"
+source = "git+https://github.com/rpc-edge/rpcedge-relay-client.git?rev=2589e8e175a4a3df6d07b6bafee989a0b94d4889#2589e8e175a4a3df6d07b6bafee989a0b94d4889"
 dependencies = [
  "quinn",
  "reqwest",
@@ -3146,7 +3146,7 @@ dependencies = [
 [[package]]
 name = "rpcedge-relay-protocol"
 version = "0.1.0"
-source = "git+https://github.com/rpc-edge/rpcedge-relay-client.git?rev=a5fede627991d4f2528a45962c3f8fbce5077b01#a5fede627991d4f2528a45962c3f8fbce5077b01"
+source = "git+https://github.com/rpc-edge/rpcedge-relay-client.git?rev=2589e8e175a4a3df6d07b6bafee989a0b94d4889#2589e8e175a4a3df6d07b6bafee989a0b94d4889"
 dependencies = [
  "base64 0.22.1",
  "serde",

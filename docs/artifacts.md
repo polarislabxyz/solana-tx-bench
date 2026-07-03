@@ -279,8 +279,8 @@ When an RPCEdge QUIC provider is configured with `route_results: true`,
 - `route_results_complete`: whether the relay returned route attempts before
   the bounded detailed-ACK timeout.
 - `route_results[]`: one row per backend route attempt, including `route`,
-  `accepted`, `latency_us`, provider error fields, `bundle_id`, and
-  route-added tip fields.
+  `route_name`, `provider`, `accepted`, `latency_us`, compact `error_class`,
+  `bundle_id`, and route-added tip fields.
 - `route_results[].route_tip_signature`,
   `route_results[].route_tip_lamports`, and
   `route_results[].route_tip_account`: exact route-added Jito tip metadata when
