@@ -130,11 +130,11 @@ qualifying value is:
 ceil(660 * 300000 / 1_000_000) = 198 lamports priority fee
 ```
 
-Benchmark implication: uniform baselines keep the same CU price across every
-arm. Harmonic-eligible strategy runs should pass
-`--client-aware-harmonic-cu-price-microlamports 300000`, which raises only
-transactions whose selected route set includes `harmonic_bundle`; the resulting
-cost must be reported with the landing result.
+Benchmark implication: the benchmarker automatically raises only transactions
+whose selected route set includes `harmonic_bundle` to at least `300000`
+micro-lamports/CU. The resulting cost must be reported with the landing result.
+Use `--client-aware-harmonic-cu-price-microlamports` only to test a higher
+Harmonic fee floor.
 
 ## Jito Bundle Route
 

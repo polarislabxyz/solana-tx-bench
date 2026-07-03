@@ -220,7 +220,6 @@ cargo run --release -- run-leader-paced \
   --txs-per-leader-run 1 \
   --leader-run-concurrency 3 \
   --route-strategy paired_route_policies \
-  --client-aware-harmonic-cu-price-microlamports 300000 \
   --resend-attempts 3 \
   --resend-interval-ms 50 \
   --slot-trigger grpc_slot \

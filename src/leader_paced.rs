@@ -34,6 +34,7 @@ use std::{
 };
 
 const LEADER_SLOTS_REFRESH_MARGIN: u64 = 16;
+const DEFAULT_HARMONIC_MIN_CU_PRICE_MICROLAMPORTS: u64 = 300_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LeaderPacedRouteStrategy {
@@ -518,8 +519,9 @@ pub async fn run_leader_paced(
         memo_prefix,
         max_spend_lamports: config.max_spend_lamports,
         route_strategy: Some(options.route_strategy.as_str().to_string()),
-        client_aware_harmonic_cu_price_microlamports: options
-            .client_aware_harmonic_cu_price_microlamports,
+        client_aware_harmonic_cu_price_microlamports: Some(harmonic_min_cu_price_microlamports(
+            &options,
+        )),
         resend_attempts: options.resend_attempts,
         resend_interval_ms: options.resend_interval.as_millis() as u64,
         providers: config
@@ -918,10 +920,7 @@ fn compute_unit_price_for_selection(
     options: &LeaderPacedOptions,
     route_selection: Option<&RouteSelection>,
 ) -> u64 {
-    if let (Some(min_harmonic_cu_price), Some(selection)) = (
-        options.client_aware_harmonic_cu_price_microlamports,
-        route_selection,
-    ) {
+    if let Some(selection) = route_selection {
         if selection
             .routes
             .iter()
@@ -929,11 +928,18 @@ fn compute_unit_price_for_selection(
         {
             return config
                 .compute_unit_price_microlamports
-                .max(min_harmonic_cu_price);
+                .max(harmonic_min_cu_price_microlamports(options));
         }
     }
 
     config.compute_unit_price_microlamports
+}
+
+fn harmonic_min_cu_price_microlamports(options: &LeaderPacedOptions) -> u64 {
+    options
+        .client_aware_harmonic_cu_price_microlamports
+        .unwrap_or(DEFAULT_HARMONIC_MIN_CU_PRICE_MICROLAMPORTS)
+        .max(DEFAULT_HARMONIC_MIN_CU_PRICE_MICROLAMPORTS)
 }
 
 fn software_client_aware_routes(leader_metadata: &LeaderMetadata) -> Vec<&'static str> {
@@ -1386,12 +1392,12 @@ mod tests {
     }
 
     #[test]
-    fn route_selection_applies_explicit_harmonic_min_cu_price() {
+    fn route_selection_applies_default_harmonic_min_cu_price() {
         let config = BenchConfig {
             compute_unit_price_microlamports: 0,
             ..BenchConfig::default()
         };
-        let options = LeaderPacedOptions {
+        let mut options = LeaderPacedOptions {
             duration: Duration::from_secs(1),
             txs_per_leader_run: 1,
             leader_run_concurrency: 1,
@@ -1402,7 +1408,7 @@ mod tests {
             rpcedge: None,
             leader_slots: None,
             route_strategy: LeaderPacedRouteStrategy::PairedRoutePolicies,
-            client_aware_harmonic_cu_price_microlamports: Some(300_000),
+            client_aware_harmonic_cu_price_microlamports: None,
             trigger: LeaderPacedTrigger::RpcPoll,
             extra_observation_accounts: Vec::new(),
             resend_attempts: 1,
@@ -1417,6 +1423,13 @@ mod tests {
         assert_eq!(
             compute_unit_price_for_selection(&config, &options, Some(&selection)),
             0
+        );
+
+        options.client_aware_harmonic_cu_price_microlamports = Some(1);
+        let selection = RouteSelection::only("harmonic", ["harmonic_bundle"]);
+        assert_eq!(
+            compute_unit_price_for_selection(&config, &options, Some(&selection)),
+            300_000
         );
 
         let config = BenchConfig {

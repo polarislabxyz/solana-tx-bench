@@ -200,12 +200,13 @@ metadata, but it is broad enough that it can mark most scheduled stake as Jito
 related. Route-policy experiments should be based on explicit policies and
 observable outcomes, not on assuming `jito=true` means "always use Jito".
 
-Uniform route-policy baselines must use the same transaction shape, compute-unit
-limit, and compute-unit price across every policy arm. Cost-aware route-policy
-runs may instead pass
-`--client-aware-harmonic-cu-price-microlamports 300000`; then any transaction
-whose selected route set includes `harmonic_bundle` is signed with at least that
-CU price and the extra cost is recorded in the artifacts.
+Uniform route-policy baselines must use the same transaction shape and
+compute-unit limit across every policy arm. Harmonic is the exception that must
+be modeled before signing: any transaction whose selected route set includes
+`harmonic_bundle` is automatically signed with at least `300000`
+micro-lamports/CU, and the extra cost is recorded in the artifacts. The
+`--client-aware-harmonic-cu-price-microlamports` flag exists only to raise that
+minimum for an explicit experiment.
 
 Harmonic public docs describe Harmonic tips as normal Solana compute-unit
 priority fees, with no separate tip instruction. Live RPCEdge provider rejects
@@ -260,7 +261,6 @@ cargo run --release -- run-leader-paced \
   --txs-per-leader-run 1 \
   --leader-run-concurrency 3 \
   --route-strategy paired_route_policies \
-  --client-aware-harmonic-cu-price-microlamports 300000 \
   --resend-attempts 3 \
   --resend-interval-ms 50 \
   --slot-trigger grpc_slot \
