@@ -251,6 +251,31 @@ valid product experiments for tail mitigation, but they must be labeled as
 separate reliability strategies because they change traffic shape, fee spend,
 and block-position pressure.
 
+For a same-signature resend experiment, use:
+
+```bash
+cargo run --release -- run-leader-paced \
+  --config examples/rpcedge-quic-frankfurt-route-results-5m.yaml \
+  --duration-seconds 300 \
+  --txs-per-leader-run 1 \
+  --leader-run-concurrency 3 \
+  --route-strategy paired_route_policies \
+  --client-aware-harmonic-cu-price-microlamports 300000 \
+  --resend-attempts 3 \
+  --resend-interval-ms 50 \
+  --slot-trigger grpc_slot \
+  --capture-leader-slots \
+  --collect-rpcedge
+```
+
+`--resend-attempts` does not create more unique benchmark transactions. It
+submits the same signed transaction/signature multiple times. In paired mode,
+all policy arms fire together on attempt 0, then together again after each
+configured interval. `leader-sends.ndjson` remains one row per unique
+signature; `samples.ndjson` has one row per provider submission attempt.
+Reports still measure landing per unique signature, while ACK diagnostics and
+route-result rows expose per-attempt sender behavior.
+
 Rakurai and Raiku are intentionally not mapped to Jito or Harmonic by the
 software-client-aware strategy as a proved integration. Rakurai publishes its
 own transaction-inclusion and virtual-priority path, and Raiku appears as a

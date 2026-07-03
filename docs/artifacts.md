@@ -33,6 +33,7 @@ Run-level metadata:
 - payer pubkey;
 - count/rate settings;
 - transaction fee settings;
+- resend attempt settings;
 - provider names and kinds.
 
 Do not put API keys, private keys, or full secret-bearing URLs into the
@@ -62,6 +63,10 @@ Important fields:
 - `status_code`
 - `error_class`
 - `error`
+- `resend_attempt_index`: zero-based resend attempt, present for
+  `run-leader-paced`;
+- `resend_attempts`: total configured attempts for that signed transaction;
+- `resend_interval_ms`: intended spacing between attempts;
 - `route_policy`
 - `selected_routes`
 - `leader_client_family`
@@ -72,6 +77,11 @@ Important fields:
 is not landing latency and not first-shred/deshred/processed latency.
 `client_ack_latency_us` is the elapsed wall time for the full client submission
 round for that transaction and can include concurrent fanout effects.
+
+When `run-leader-paced --resend-attempts N` is used, `samples.ndjson` can have
+multiple rows with the same `signature`. These rows are per-attempt ACK
+diagnostics. Landing reports deduplicate by caller signature before calculating
+success and latency.
 
 `leader_client_family` is a coarse cohort label. Route-policy decisions should
 prefer `leader_software_client` and `leader_software_client_id` when present.

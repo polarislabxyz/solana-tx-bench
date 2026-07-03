@@ -55,7 +55,7 @@ pub async fn run_benchmark(config: BenchConfig) -> Result<BenchRunOutput> {
     }
 
     let manifest = BenchManifest {
-        schema_version: 1,
+        schema_version: 2,
         test_id: test_id.clone(),
         generated_at: Utc::now(),
         rpc_url_label: redact_url(&config.rpc_url),
@@ -70,6 +70,8 @@ pub async fn run_benchmark(config: BenchConfig) -> Result<BenchRunOutput> {
         max_spend_lamports: config.max_spend_lamports,
         route_strategy: None,
         client_aware_harmonic_cu_price_microlamports: None,
+        resend_attempts: 1,
+        resend_interval_ms: 0,
         providers: config
             .providers
             .iter()
@@ -134,6 +136,9 @@ pub async fn run_benchmark(config: BenchConfig) -> Result<BenchRunOutput> {
                 tx.base_fee_lamports,
                 tx.priority_fee_lamports,
                 tx.transaction_fee_lamports,
+                None,
+                None,
+                None,
                 ack,
             );
             writer.write_sample(&sample)?;

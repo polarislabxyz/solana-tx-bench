@@ -159,6 +159,10 @@ pub struct UnobservedEvent {
     pub send_leader_city: String,
     pub send_leader_client: String,
     pub provider_name: Option<String>,
+    pub provider_attempts: usize,
+    pub provider_accepted_attempts: usize,
+    pub provider_ack_latency_us_min: Option<u128>,
+    pub provider_ack_latency_us_max: Option<u128>,
     pub provider_accepted: Option<bool>,
     pub provider_ack_latency_us: Option<u128>,
     pub provider_request_id: Option<String>,
@@ -221,10 +225,21 @@ pub fn generate_report(artifact_dir: &Path) -> Result<ReportOutput> {
         .cloned()
         .map(|send| (send.signature.clone(), send))
         .collect::<BTreeMap<_, _>>();
-    let sample_by_signature = samples
+    let mut samples_by_signature = BTreeMap::<String, Vec<BenchSample>>::new();
+    for sample in samples.iter().cloned() {
+        samples_by_signature
+            .entry(sample.signature.clone())
+            .or_default()
+            .push(sample);
+    }
+    let sample_by_signature = samples_by_signature
         .iter()
-        .cloned()
-        .map(|sample| (sample.signature.clone(), sample))
+        .filter_map(|(signature, samples)| {
+            samples
+                .first()
+                .cloned()
+                .map(|sample| (signature.clone(), sample))
+        })
         .collect::<BTreeMap<_, _>>();
     let caller_observations = observations
         .iter()
@@ -326,7 +341,7 @@ pub fn generate_report(artifact_dir: &Path) -> Result<ReportOutput> {
         ),
         unobserved_events: summarize_unobserved_events(
             &sends,
-            &sample_by_signature,
+            &samples_by_signature,
             &caller_observed_signatures,
             &cost_by_signature,
             &leader_by_slot,
@@ -1013,7 +1028,7 @@ fn summarize_tail_events(
 
 fn summarize_unobserved_events(
     sends: &[LeaderSendEvent],
-    sample_by_signature: &BTreeMap<String, BenchSample>,
+    samples_by_signature: &BTreeMap<String, Vec<BenchSample>>,
     caller_observed_signatures: &BTreeSet<String>,
     cost_by_signature: &BTreeMap<String, CostRow>,
     leader_by_slot: &BTreeMap<u64, LeaderMeta>,
@@ -1022,7 +1037,11 @@ fn summarize_unobserved_events(
         .iter()
         .filter(|send| !caller_observed_signatures.contains(&send.signature))
         .map(|send| {
-            let sample = sample_by_signature.get(&send.signature);
+            let signature_samples = samples_by_signature
+                .get(&send.signature)
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            let sample = signature_samples.first();
             let send_leader = send_leader_meta(Some(send), leader_by_slot);
             let cost = cost_by_signature.get(&send.signature);
             let policy_arm = sample
@@ -1041,6 +1060,10 @@ fn summarize_unobserved_events(
             let compute_unit_price_microlamports = sample
                 .map(|sample| sample.compute_unit_price_microlamports)
                 .or(Some(send.compute_unit_price_microlamports));
+            let provider_ack_latencies = signature_samples
+                .iter()
+                .map(|sample| sample.provider_ack_latency_us)
+                .collect::<Vec<_>>();
 
             UnobservedEvent {
                 signature: send.signature.clone(),
@@ -1059,6 +1082,13 @@ fn summarize_unobserved_events(
                 send_leader_city: send_leader.city,
                 send_leader_client: send_leader.client_software,
                 provider_name: sample.map(|sample| sample.provider_name.clone()),
+                provider_attempts: signature_samples.len(),
+                provider_accepted_attempts: signature_samples
+                    .iter()
+                    .filter(|sample| sample.accepted)
+                    .count(),
+                provider_ack_latency_us_min: provider_ack_latencies.iter().min().copied(),
+                provider_ack_latency_us_max: provider_ack_latencies.iter().max().copied(),
                 provider_accepted: sample.map(|sample| sample.accepted),
                 provider_ack_latency_us: sample.map(|sample| sample.provider_ack_latency_us),
                 provider_request_id: sample.and_then(|sample| sample.provider_request_id.clone()),
@@ -1066,9 +1096,10 @@ fn summarize_unobserved_events(
                 error_class: sample.and_then(|sample| sample.error_class.clone()),
                 error: sample.and_then(|sample| sample.error.clone()),
                 route_results_complete: sample.and_then(|sample| sample.route_results_complete),
-                route_results: sample
-                    .map(|sample| sample.route_results.clone())
-                    .unwrap_or_default(),
+                route_results: signature_samples
+                    .iter()
+                    .flat_map(|sample| sample.route_results.iter().cloned())
+                    .collect(),
                 compute_unit_price_microlamports,
                 base_fee_lamports: cost.map(|cost| cost.base_fee_lamports),
                 priority_fee_lamports: cost.map(|cost| cost.priority_fee_lamports),
@@ -1224,7 +1255,7 @@ fn report_markdown(report: &ReportOutput) -> String {
             row.send_slot,
             leader_label(&row.send_leader_identity, &row.send_leader_city),
             row.send_leader_client,
-            provider_ack_label(row.provider_accepted, row.provider_ack_latency_us),
+            provider_attempt_label(row),
             route_results_summary(&row.route_results),
             fmt_u64(row.total_generated_spend_lamports),
         ));
@@ -1479,7 +1510,7 @@ details{background:#fff;border:1px solid #dfe5e8;border-radius:8px;padding:14px;
             row.send_slot,
             html_escape(&leader_label(&row.send_leader_identity, &row.send_leader_city)),
             html_escape(&row.send_leader_client),
-            html_escape(&provider_ack_label(row.provider_accepted, row.provider_ack_latency_us)),
+            html_escape(&provider_attempt_label(row)),
             html_escape(&route_results_summary(&row.route_results)),
             fmt_u64(row.total_generated_spend_lamports),
         ));
@@ -1715,7 +1746,7 @@ fn tail_events_html(rows: &[TailEvent]) -> String {
 
 fn unobserved_events_csv(rows: &[UnobservedEvent]) -> String {
     let mut out = String::new();
-    out.push_str("signature,policy_arm,route_policy,selected_routes,comparison_group_id,sent_at,send_slot,leader_run_start_slot,leader_run_end_slot,trigger_source,slot_signal_status,send_leader_identity,send_leader_region,send_leader_city,send_leader_client,provider_name,provider_accepted,provider_ack_latency_us,provider_request_id,status_code,error_class,error,route_results_complete,route_results,compute_unit_price_microlamports,base_fee_lamports,priority_fee_lamports,transaction_fee_lamports,route_tip_generated_lamports,total_generated_spend_lamports\n");
+    out.push_str("signature,policy_arm,route_policy,selected_routes,comparison_group_id,sent_at,send_slot,leader_run_start_slot,leader_run_end_slot,trigger_source,slot_signal_status,send_leader_identity,send_leader_region,send_leader_city,send_leader_client,provider_name,provider_attempts,provider_accepted_attempts,provider_ack_latency_us_min,provider_ack_latency_us_max,provider_accepted,provider_ack_latency_us,provider_request_id,status_code,error_class,error,route_results_complete,route_results,compute_unit_price_microlamports,base_fee_lamports,priority_fee_lamports,transaction_fee_lamports,route_tip_generated_lamports,total_generated_spend_lamports\n");
     for row in rows {
         let fields = [
             row.signature.clone(),
@@ -1734,6 +1765,14 @@ fn unobserved_events_csv(rows: &[UnobservedEvent]) -> String {
             row.send_leader_city.clone(),
             row.send_leader_client.clone(),
             row.provider_name.clone().unwrap_or_default(),
+            row.provider_attempts.to_string(),
+            row.provider_accepted_attempts.to_string(),
+            row.provider_ack_latency_us_min
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.provider_ack_latency_us_max
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
             row.provider_accepted
                 .map(|value| value.to_string())
                 .unwrap_or_default(),
@@ -1801,7 +1840,7 @@ fn unobserved_events_html(rows: &[UnobservedEvent]) -> String {
             row.send_slot,
             html_escape(&leader_label(&row.send_leader_identity, &row.send_leader_city)),
             html_escape(&row.send_leader_client),
-            html_escape(&provider_ack_label(row.provider_accepted, row.provider_ack_latency_us)),
+            html_escape(&provider_attempt_label(row)),
             html_escape(&route_results_summary(&row.route_results)),
             fmt_u64(row.total_generated_spend_lamports),
             html_escape(
@@ -1824,6 +1863,26 @@ fn provider_ack_label(accepted: Option<bool>, latency_us: Option<u128>) -> Strin
         (Some(false), None) => "rejected".to_string(),
         (None, _) => "-".to_string(),
     }
+}
+
+fn provider_attempt_label(row: &UnobservedEvent) -> String {
+    if row.provider_attempts == 0 {
+        return provider_ack_label(row.provider_accepted, row.provider_ack_latency_us);
+    }
+    let latency = match (
+        row.provider_ack_latency_us_min,
+        row.provider_ack_latency_us_max,
+    ) {
+        (Some(min), Some(max)) if min == max => format!("{:.3}ms", min as f64 / 1000.0),
+        (Some(min), Some(max)) => {
+            format!("{:.3}-{:.3}ms", min as f64 / 1000.0, max as f64 / 1000.0)
+        }
+        _ => "-".to_string(),
+    };
+    format!(
+        "{}/{} accepted ({latency})",
+        row.provider_accepted_attempts, row.provider_attempts
+    )
 }
 
 fn route_results_summary(rows: &[crate::adapters::RouteResultAck]) -> String {
@@ -2029,5 +2088,36 @@ mod tests {
         assert_eq!(report.cost_summary.total_route_tip_landed_lamports, 1_000);
         assert_eq!(report.cost_summary.total_landed_spend_lamports, 6_198);
         assert_eq!(report.source_summaries[0].count, 1);
+    }
+
+    #[test]
+    fn report_aggregates_unobserved_resend_attempts_by_signature() {
+        let dir = tempdir().expect("tempdir");
+        let root = dir.path();
+        fs::write(
+            root.join("samples.ndjson"),
+            r#"{"schema_version":5,"test_id":"run-resend","iteration":0,"signature":"caller-sig","provider_name":"p","provider_kind":"rpcedge_quic_raw_tx","accepted":true,"client_started_at":"2026-01-01T00:00:00Z","client_finished_at":"2026-01-01T00:00:00.001Z","client_ack_latency_us":1000,"provider_send_started_at":"2026-01-01T00:00:00Z","provider_send_finished_at":"2026-01-01T00:00:00.001Z","provider_ack_latency_us":1000,"provider_request_id":"run-resend-0","returned_signature":"caller-sig","status_code":null,"error_class":null,"error":null,"resend_attempt_index":0,"resend_attempts":2,"resend_interval_ms":50,"route_policy":"tpu_quic_only","route_mode":"only","selected_routes":["tpu_quic"],"leader_client_family":"jito","compute_unit_limit":660,"compute_unit_price_microlamports":0,"base_fee_lamports":5000,"priority_fee_lamports":0,"transaction_fee_lamports":5000,"route_results":[{"route":"tpu_quic","route_name":"yellowstone-tpu-frankfurt","provider":"yellowstone-tpu","accepted":true,"latency_us":2}]}
+{"schema_version":5,"test_id":"run-resend","iteration":0,"signature":"caller-sig","provider_name":"p","provider_kind":"rpcedge_quic_raw_tx","accepted":true,"client_started_at":"2026-01-01T00:00:00.050Z","client_finished_at":"2026-01-01T00:00:00.052Z","client_ack_latency_us":2000,"provider_send_started_at":"2026-01-01T00:00:00.050Z","provider_send_finished_at":"2026-01-01T00:00:00.052Z","provider_ack_latency_us":2000,"provider_request_id":"run-resend-1","returned_signature":"caller-sig","status_code":null,"error_class":null,"error":null,"resend_attempt_index":1,"resend_attempts":2,"resend_interval_ms":50,"route_policy":"tpu_quic_only","route_mode":"only","selected_routes":["tpu_quic"],"leader_client_family":"jito","compute_unit_limit":660,"compute_unit_price_microlamports":0,"base_fee_lamports":5000,"priority_fee_lamports":0,"transaction_fee_lamports":5000,"route_results":[{"route":"tpu_quic","route_name":"yellowstone-tpu-frankfurt","provider":"yellowstone-tpu","accepted":true,"latency_us":3}]}"#,
+        )
+        .expect("samples");
+        fs::write(
+            root.join("leader-sends.ndjson"),
+            r#"{"schema_version":3,"test_id":"run-resend","iteration":0,"signature":"caller-sig","leader_identity":"leader-a","leader_run_start_slot":100,"leader_run_end_slot":103,"send_slot":100,"sent_at":"2026-01-01T00:00:00Z","trigger_source":"grpc_slot","slot_signal_status":"SLOT_FIRST_SHRED_RECEIVED","slot_signal_observed_at":"2026-01-01T00:00:00Z","leader_client_family":"jito","route_policy":"tpu_quic_only","selected_routes":["tpu_quic"],"compute_unit_limit":660,"compute_unit_price_microlamports":0,"base_fee_lamports":5000,"priority_fee_lamports":0,"transaction_fee_lamports":5000}"#,
+        )
+        .expect("sends");
+        fs::write(root.join("matched-observations.ndjson"), "").expect("observations");
+
+        let report = generate_report(root).expect("report");
+        assert_eq!(report.totals.sent_transactions, 1);
+        assert_eq!(report.totals.matched_signatures, 0);
+        assert_eq!(report.totals.unobserved_signatures, 1);
+        assert_eq!(report.provider_summaries[0].count, 2);
+        assert_eq!(report.unobserved_events.len(), 1);
+        let unobserved = &report.unobserved_events[0];
+        assert_eq!(unobserved.provider_attempts, 2);
+        assert_eq!(unobserved.provider_accepted_attempts, 2);
+        assert_eq!(unobserved.provider_ack_latency_us_min, Some(1000));
+        assert_eq!(unobserved.provider_ack_latency_us_max, Some(2000));
+        assert_eq!(unobserved.route_results.len(), 2);
     }
 }

@@ -210,7 +210,27 @@ submit-to-processed, landed slot delta, processed block `slot_index`, success
 ratio, and extra priority/tip cost. Provider ACK latency is diagnostic only.
 Retries, delayed resends, and duplicate spam are intentionally excluded from
 baseline route-policy comparisons; benchmark those as separate tail-mitigation
-strategies.
+strategies. To test same-signature resend behavior, keep
+`--txs-per-leader-run 1` and add resend attempts:
+
+```bash
+cargo run --release -- run-leader-paced \
+  --config examples/rpcedge-quic-frankfurt-route-results-5m.yaml \
+  --duration-seconds 300 \
+  --txs-per-leader-run 1 \
+  --leader-run-concurrency 3 \
+  --route-strategy paired_route_policies \
+  --client-aware-harmonic-cu-price-microlamports 300000 \
+  --resend-attempts 3 \
+  --resend-interval-ms 50 \
+  --slot-trigger grpc_slot \
+  --capture-leader-slots \
+  --collect-rpcedge
+```
+
+This signs one transaction per policy arm, then submits that same signature
+three times at `0ms`, `+50ms`, and `+100ms`. Landing remains measured per
+unique signature; provider ACK diagnostics are recorded per attempt.
 
 Leader-paced outputs add:
 

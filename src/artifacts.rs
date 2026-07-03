@@ -24,7 +24,15 @@ pub struct BenchManifest {
     pub max_spend_lamports: Option<u64>,
     pub route_strategy: Option<String>,
     pub client_aware_harmonic_cu_price_microlamports: Option<u64>,
+    #[serde(default = "default_resend_attempts")]
+    pub resend_attempts: usize,
+    #[serde(default)]
+    pub resend_interval_ms: u64,
     pub providers: Vec<ManifestProvider>,
+}
+
+fn default_resend_attempts() -> usize {
+    1
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -63,6 +71,12 @@ pub struct BenchSample {
     pub status_code: Option<u16>,
     pub error_class: Option<String>,
     pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resend_attempt_index: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resend_attempts: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resend_interval_ms: Option<u64>,
     pub route_policy: Option<String>,
     pub route_mode: Option<String>,
     pub selected_routes: Vec<String>,
@@ -102,10 +116,13 @@ impl BenchSample {
         base_fee_lamports: u64,
         priority_fee_lamports: u64,
         transaction_fee_lamports: u64,
+        resend_attempt_index: Option<u16>,
+        resend_attempts: Option<u16>,
+        resend_interval_ms: Option<u64>,
         ack: ProviderAck,
     ) -> Self {
         Self {
-            schema_version: 4,
+            schema_version: 5,
             test_id: test_id.to_string(),
             iteration,
             signature,
@@ -126,6 +143,9 @@ impl BenchSample {
             status_code: ack.status_code,
             error_class: ack.error_class,
             error: ack.error,
+            resend_attempt_index,
+            resend_attempts,
+            resend_interval_ms,
             route_policy: route_selection.map(|selection| selection.policy.clone()),
             route_mode: route_selection.map(|selection| selection.mode.as_wire().to_string()),
             selected_routes: route_selection

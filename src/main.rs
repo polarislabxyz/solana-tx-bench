@@ -36,6 +36,10 @@ enum Command {
         txs_per_leader_run: usize,
         #[arg(long, default_value_t = 1)]
         leader_run_concurrency: usize,
+        #[arg(long, default_value_t = 1)]
+        resend_attempts: usize,
+        #[arg(long, default_value_t = 0)]
+        resend_interval_ms: u64,
         #[arg(long, default_value_t = 12)]
         lookbehind_slots: u64,
         #[arg(long, default_value_t = 64)]
@@ -153,6 +157,8 @@ async fn main() -> Result<()> {
             duration_seconds,
             txs_per_leader_run,
             leader_run_concurrency,
+            resend_attempts,
+            resend_interval_ms,
             lookbehind_slots,
             lookahead_slots,
             poll_ms,
@@ -202,6 +208,8 @@ async fn main() -> Result<()> {
                     duration: std::time::Duration::from_secs(duration_seconds),
                     txs_per_leader_run,
                     leader_run_concurrency,
+                    resend_attempts,
+                    resend_interval: std::time::Duration::from_millis(resend_interval_ms),
                     lookbehind_slots,
                     lookahead_slots,
                     poll_interval: std::time::Duration::from_millis(poll_ms),

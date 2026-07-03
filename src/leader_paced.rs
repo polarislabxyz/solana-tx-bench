@@ -97,6 +97,8 @@ pub struct LeaderPacedOptions {
     pub client_aware_harmonic_cu_price_microlamports: Option<u64>,
     pub trigger: LeaderPacedTrigger,
     pub extra_observation_accounts: Vec<String>,
+    pub resend_attempts: usize,
+    pub resend_interval: Duration,
 }
 
 #[derive(Debug, Clone)]
@@ -191,6 +193,12 @@ pub async fn run_leader_paced(
     }
     if options.leader_run_concurrency == 0 {
         bail!("leader_run_concurrency must be greater than zero");
+    }
+    if options.resend_attempts == 0 {
+        bail!("resend_attempts must be greater than zero");
+    }
+    if options.resend_attempts > u16::MAX as usize {
+        bail!("resend_attempts must be <= {}", u16::MAX);
     }
     if options.route_strategy.requires_leader_slots() && options.leader_slots.is_none() {
         bail!(
@@ -427,30 +435,40 @@ pub async fn run_leader_paced(
                 options.leader_run_concurrency
             };
             for chunk in pending.chunks(chunk_size) {
-                let futures = chunk.iter().map(|pending_tx| {
-                    send_one_transaction_to_providers(
-                        providers.as_slice(),
-                        test_id.as_str(),
-                        &pending_tx.tx,
-                        send_batch_at,
-                        pending_tx.iteration,
-                        timeout,
-                        pending_tx.route_selection.clone(),
-                        pending_tx.leader_metadata.clone(),
-                        pending_tx.comparison_group_id.clone(),
-                        pending_tx.policy_arm.clone(),
-                        pending_tx.policy_arm_index,
-                        pending_tx.compute_unit_limit,
-                        pending_tx.compute_unit_price_microlamports,
-                        pending_tx.tx.base_fee_lamports,
-                        pending_tx.tx.priority_fee_lamports,
-                        pending_tx.tx.transaction_fee_lamports,
-                    )
-                });
-                for tx_samples in join_all(futures).await {
-                    for sample in tx_samples {
-                        writer.write_sample(&sample)?;
-                        samples.push(sample);
+                for resend_attempt_index in 0..options.resend_attempts {
+                    let futures = chunk.iter().map(|pending_tx| {
+                        send_one_transaction_to_providers(
+                            providers.as_slice(),
+                            test_id.as_str(),
+                            &pending_tx.tx,
+                            send_batch_at,
+                            pending_tx.iteration,
+                            timeout,
+                            pending_tx.route_selection.clone(),
+                            pending_tx.leader_metadata.clone(),
+                            pending_tx.comparison_group_id.clone(),
+                            pending_tx.policy_arm.clone(),
+                            pending_tx.policy_arm_index,
+                            pending_tx.compute_unit_limit,
+                            pending_tx.compute_unit_price_microlamports,
+                            pending_tx.tx.base_fee_lamports,
+                            pending_tx.tx.priority_fee_lamports,
+                            pending_tx.tx.transaction_fee_lamports,
+                            resend_attempt_index,
+                            options.resend_attempts,
+                            options.resend_interval,
+                        )
+                    });
+                    for tx_samples in join_all(futures).await {
+                        for sample in tx_samples {
+                            writer.write_sample(&sample)?;
+                            samples.push(sample);
+                        }
+                    }
+                    if resend_attempt_index + 1 < options.resend_attempts
+                        && !options.resend_interval.is_zero()
+                    {
+                        tokio::time::sleep(options.resend_interval).await;
                     }
                 }
             }
@@ -486,7 +504,7 @@ pub async fn run_leader_paced(
     };
 
     let manifest = BenchManifest {
-        schema_version: 1,
+        schema_version: 2,
         test_id: test_id.clone(),
         generated_at: Utc::now(),
         rpc_url_label: redact_url(&config.rpc_url),
@@ -502,6 +520,8 @@ pub async fn run_leader_paced(
         route_strategy: Some(options.route_strategy.as_str().to_string()),
         client_aware_harmonic_cu_price_microlamports: options
             .client_aware_harmonic_cu_price_microlamports,
+        resend_attempts: options.resend_attempts,
+        resend_interval_ms: options.resend_interval.as_millis() as u64,
         providers: config
             .providers
             .iter()
@@ -584,6 +604,9 @@ async fn send_one_transaction_to_providers(
     base_fee_lamports: u64,
     priority_fee_lamports: u64,
     transaction_fee_lamports: u64,
+    resend_attempt_index: usize,
+    resend_attempts: usize,
+    resend_interval: Duration,
 ) -> Vec<BenchSample> {
     let started = Instant::now();
     let ctx = SendContext {
@@ -622,6 +645,9 @@ async fn send_one_transaction_to_providers(
                 base_fee_lamports,
                 priority_fee_lamports,
                 transaction_fee_lamports,
+                Some(resend_attempt_index as u16),
+                Some(resend_attempts as u16),
+                Some(resend_interval.as_millis() as u64),
                 ack,
             )
         })
@@ -1379,6 +1405,8 @@ mod tests {
             client_aware_harmonic_cu_price_microlamports: Some(300_000),
             trigger: LeaderPacedTrigger::RpcPoll,
             extra_observation_accounts: Vec::new(),
+            resend_attempts: 1,
+            resend_interval: Duration::from_millis(0),
         };
         let selection = RouteSelection::only("always_race", ["tpu_quic", "harmonic_bundle"]);
         assert_eq!(
