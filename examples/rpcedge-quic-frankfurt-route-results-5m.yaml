@@ -9,7 +9,7 @@ lamports: 500
 compute_unit_limit: 660
 compute_unit_price_microlamports: 0
 memo_prefix: null
-max_spend_lamports: 10000000
+max_spend_lamports: 25000000
 timeout_ms: 2000
 
 providers:
