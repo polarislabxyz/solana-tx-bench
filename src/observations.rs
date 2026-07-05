@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 pub enum ObservationSourceKind {
     YellowstoneProcessed,
     YellowstoneDeshred,
+    YellowstoneEntry,
     NdjsonImport,
 }
 
@@ -26,6 +27,43 @@ pub struct ObservationEvent {
     pub slot: Option<u64>,
     pub slot_index: Option<u64>,
     pub source_sequence: Option<u64>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct EntryEvent {
+    pub schema_version: u32,
+    pub test_id: String,
+    pub source_name: String,
+    pub source_kind: ObservationSourceKind,
+    pub observed_at: DateTime<Utc>,
+    pub slot: u64,
+    pub entry_index: u64,
+    pub num_hashes: u64,
+    pub entry_hash: String,
+    pub executed_transaction_count: u64,
+    pub starting_transaction_index: u64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct EntryPlacementEvent {
+    pub schema_version: u32,
+    pub test_id: String,
+    pub signature: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature_role: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub caller_signature: Option<String>,
+    pub source_name: String,
+    pub source_kind: ObservationSourceKind,
+    pub observed_at: DateTime<Utc>,
+    pub slot: u64,
+    pub slot_index: u64,
+    pub entry_index: u64,
+    pub tx_index_in_entry: u64,
+    pub entry_num_hashes: u64,
+    pub entry_hash: String,
+    pub entry_executed_transaction_count: u64,
+    pub entry_starting_transaction_index: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

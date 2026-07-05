@@ -1,6 +1,8 @@
 use crate::{
-    artifacts::BenchSample, leader_paced::LeaderSendEvent,
-    leader_slots::LeaderSlotsSnapshotArtifact, observations::ObservationEvent,
+    artifacts::BenchSample,
+    leader_paced::LeaderSendEvent,
+    leader_slots::LeaderSlotsSnapshotArtifact,
+    observations::{EntryPlacementEvent, ObservationEvent},
 };
 use anyhow::{Context, Result};
 use chrono::{DateTime, SecondsFormat, Utc};
@@ -38,6 +40,7 @@ pub struct ReportTotals {
     pub unobserved_signatures: usize,
     pub matched_route_tip_signatures: usize,
     pub leader_slot_snapshots: usize,
+    pub entry_placements: usize,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -90,6 +93,10 @@ pub struct SourceReportSummary {
     pub landed_slot_delta_p90: Option<i64>,
     pub slot_index_p50: Option<u64>,
     pub slot_index_p90: Option<u64>,
+    pub entry_index_p50: Option<u64>,
+    pub entry_index_p90: Option<u64>,
+    pub tx_index_in_entry_p50: Option<u64>,
+    pub tx_index_in_entry_p90: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -119,6 +126,9 @@ pub struct TailEvent {
     pub slot_index: Option<u64>,
     pub first_observed_slot_index: Option<u64>,
     pub processed_slot_index: Option<u64>,
+    pub entry_index: Option<u64>,
+    pub tx_index_in_entry: Option<u64>,
+    pub entry_executed_transaction_count: Option<u64>,
     pub send_leader_identity: String,
     pub send_leader_region: String,
     pub send_leader_city: String,
@@ -196,6 +206,7 @@ struct ObservationRow {
     send: Option<LeaderSendEvent>,
     latency_us: Option<i128>,
     leader: LeaderMeta,
+    placement: Option<EntryPlacementEvent>,
 }
 
 pub fn generate_report(artifact_dir: &Path) -> Result<ReportOutput> {
@@ -203,6 +214,8 @@ pub fn generate_report(artifact_dir: &Path) -> Result<ReportOutput> {
     let sends: Vec<LeaderSendEvent> = read_ndjson(&artifact_dir.join("leader-sends.ndjson"))?;
     let observations: Vec<ObservationEvent> =
         read_ndjson(&artifact_dir.join("matched-observations.ndjson"))?;
+    let entry_placements: Vec<EntryPlacementEvent> =
+        read_ndjson(&artifact_dir.join("entry-placements.ndjson"))?;
     let manifest = read_manifest(artifact_dir)?;
     let snapshots = read_leader_slot_snapshots(artifact_dir)?;
 
@@ -261,6 +274,7 @@ pub fn generate_report(artifact_dir: &Path) -> Result<ReportOutput> {
         .collect::<BTreeSet<_>>();
     let cost_by_signature = cost_rows_by_signature(&samples, &sends, &observed_signatures);
     let processed_slot_index_by_signature = build_processed_slot_index_lookup(&caller_observations);
+    let placement_by_signature = build_entry_placement_lookup(&entry_placements);
 
     let rows = caller_observations
         .iter()
@@ -297,6 +311,7 @@ pub fn generate_report(artifact_dir: &Path) -> Result<ReportOutput> {
                     .map(|value| value as i128)
             });
             ObservationRow {
+                placement: placement_by_signature.get(&event.signature).cloned(),
                 event,
                 send,
                 latency_us,
@@ -326,6 +341,7 @@ pub fn generate_report(artifact_dir: &Path) -> Result<ReportOutput> {
                 .collect::<std::collections::BTreeSet<_>>()
                 .len(),
             leader_slot_snapshots: snapshots.len(),
+            entry_placements: entry_placements.len(),
         },
         provider_summaries: summarize_providers(&samples, manifest.as_ref()),
         source_summaries: summarize_sources(&landing_rows),
@@ -494,6 +510,29 @@ fn build_processed_slot_index_lookup(events: &[ObservationEvent]) -> BTreeMap<St
     let mut out = BTreeMap::new();
     for (signature, _, slot_index) in rows {
         out.entry(signature).or_insert(slot_index);
+    }
+    out
+}
+
+fn build_entry_placement_lookup(
+    placements: &[EntryPlacementEvent],
+) -> BTreeMap<String, EntryPlacementEvent> {
+    let mut rows = placements
+        .iter()
+        .cloned()
+        .map(|placement| {
+            (
+                placement.signature.clone(),
+                placement.observed_at,
+                placement,
+            )
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by_key(|(_, observed_at, _)| *observed_at);
+
+    let mut out = BTreeMap::new();
+    for (signature, _, placement) in rows {
+        out.entry(signature).or_insert(placement);
     }
     out
 }
@@ -860,6 +899,24 @@ fn summarize_sources(rows: &[ObservationRow]) -> Vec<SourceReportSummary> {
                 .filter_map(|row| row.event.slot_index)
                 .collect::<Vec<_>>();
             slot_indexes.sort_unstable();
+            let mut entry_indexes = rows
+                .iter()
+                .filter_map(|row| {
+                    row.placement
+                        .as_ref()
+                        .map(|placement| placement.entry_index)
+                })
+                .collect::<Vec<_>>();
+            entry_indexes.sort_unstable();
+            let mut tx_indexes_in_entry = rows
+                .iter()
+                .filter_map(|row| {
+                    row.placement
+                        .as_ref()
+                        .map(|placement| placement.tx_index_in_entry)
+                })
+                .collect::<Vec<_>>();
+            tx_indexes_in_entry.sort_unstable();
             let first_seen = rows
                 .iter()
                 .filter(|row| {
@@ -881,6 +938,10 @@ fn summarize_sources(rows: &[ObservationRow]) -> Vec<SourceReportSummary> {
                 landed_slot_delta_p90: percentile_i64(&slot_deltas, 0.90),
                 slot_index_p50: percentile_u64(&slot_indexes, 0.50),
                 slot_index_p90: percentile_u64(&slot_indexes, 0.90),
+                entry_index_p50: percentile_u64(&entry_indexes, 0.50),
+                entry_index_p90: percentile_u64(&entry_indexes, 0.90),
+                tx_index_in_entry_p50: percentile_u64(&tx_indexes_in_entry, 0.50),
+                tx_index_in_entry_p90: percentile_u64(&tx_indexes_in_entry, 0.90),
             }
         })
         .collect()
@@ -964,6 +1025,7 @@ fn summarize_tail_events(
                 .get(&row.event.signature)
                 .copied();
             let slot_index = processed_slot_index.or(row.event.slot_index);
+            let placement = row.placement.as_ref();
             let policy_arm = sample
                 .and_then(|sample| sample.policy_arm.clone())
                 .or_else(|| send.and_then(|send| send.policy_arm.clone()));
@@ -1000,6 +1062,10 @@ fn summarize_tail_events(
                 slot_index,
                 first_observed_slot_index: row.event.slot_index,
                 processed_slot_index,
+                entry_index: placement.map(|placement| placement.entry_index),
+                tx_index_in_entry: placement.map(|placement| placement.tx_index_in_entry),
+                entry_executed_transaction_count: placement
+                    .map(|placement| placement.entry_executed_transaction_count),
                 send_leader_identity: send_leader.identity.clone(),
                 send_leader_region: send_leader.region.clone(),
                 send_leader_city: send_leader.city.clone(),
@@ -1187,12 +1253,13 @@ fn report_markdown(report: &ReportOutput) -> String {
         report.test_id
     ));
     out.push_str(&format!(
-        "- Generated: `{}`\n- Artifact dir: `{}`\n- Sent transactions: `{}`\n- Provider samples: `{}`\n- Observations: `{}`\n- Matched caller signatures: `{}`\n- Unobserved caller signatures: `{}`\n- Matched route-tip signatures: `{}`\n- Leader-slot snapshots: `{}`\n\n",
+        "- Generated: `{}`\n- Artifact dir: `{}`\n- Sent transactions: `{}`\n- Provider samples: `{}`\n- Observations: `{}`\n- Entry placements: `{}`\n- Matched caller signatures: `{}`\n- Unobserved caller signatures: `{}`\n- Matched route-tip signatures: `{}`\n- Leader-slot snapshots: `{}`\n\n",
         report.generated_at.to_rfc3339_opts(SecondsFormat::Millis, true),
         report.artifact_dir,
         report.totals.sent_transactions,
         report.totals.samples,
         report.totals.observations,
+        report.totals.entry_placements,
         report.totals.matched_signatures,
         report.totals.unobserved_signatures,
         report.totals.matched_route_tip_signatures,
@@ -1224,11 +1291,11 @@ fn report_markdown(report: &ReportOutput) -> String {
 
     out.push_str("## Landing Observations\n\n");
     out.push_str("Landing latency uses the earliest observation per transaction across configured streams. In normal RPCEdge runs this should be the deshred stream; processed metadata is only counted here when it is the first or only observation for a signature.\n\n");
-    out.push_str("| First source | Count | p50 ms | p90 ms | p99 ms | max ms | same-slot | slot delta p50 | slot index p50 |\n");
-    out.push_str("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
+    out.push_str("| First source | Count | p50 ms | p90 ms | p99 ms | max ms | same-slot | slot delta p50 | slot index p50 | entry index p50 | tx-in-entry p50 |\n");
+    out.push_str("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
     for row in &report.source_summaries {
         out.push_str(&format!(
-            "| `{}` | {} | {} | {} | {} | {} | {} / {:.1}% | {} | {} |\n",
+            "| `{}` | {} | {} | {} | {} | {} | {} / {:.1}% | {} | {} | {} | {} |\n",
             row.source_name,
             row.count,
             fmt_ms(row.submit_to_observed_p50_ms),
@@ -1239,6 +1306,8 @@ fn report_markdown(report: &ReportOutput) -> String {
             row.same_slot_rate * 100.0,
             fmt_i64(row.landed_slot_delta_p50),
             fmt_u64(row.slot_index_p50),
+            fmt_u64(row.entry_index_p50),
+            fmt_u64(row.tx_index_in_entry_p50),
         ));
     }
 
@@ -1292,12 +1361,12 @@ fn report_markdown(report: &ReportOutput) -> String {
     }
 
     out.push_str("\n## Tail Events\n\n");
-    out.push_str("Tail latency uses the first observation time, normally deshred. Transaction slot index uses processed Yellowstone/gRPC metadata when available, because deshred is fastest but processed carries canonical transaction metadata.\n\n");
-    out.push_str("| Signature | Source | Latency ms | Arm | Routes | Send slot | Send leader | Send client | Landed slot | Landed leader | Landed client | Tx index | Tx fee | Route tip generated | Route tip landed | Total landed |\n");
-    out.push_str("| --- | --- | ---: | --- | --- | ---: | --- | --- | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: |\n");
+    out.push_str("Tail latency uses the first observation time, normally deshred. Transaction slot index uses processed Yellowstone/gRPC metadata when available. Entry placement is joined from Yellowstone entry updates when `--collect-entries` was enabled; it is block placement context, not proof of packet arrival time at the leader.\n\n");
+    out.push_str("| Signature | Source | Latency ms | Arm | Routes | Send slot | Send leader | Send client | Landed slot | Landed leader | Landed client | Tx index | Entry index | Tx-in-entry | Entry txs | Tx fee | Route tip generated | Route tip landed | Total landed |\n");
+    out.push_str("| --- | --- | ---: | --- | --- | ---: | --- | --- | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
     for row in &report.tail_events {
         out.push_str(&format!(
-            "| `{}` | `{}` | {:.3} | `{}` | `{}` | {} | `{}` | `{}` | {} | `{}` | `{}` | {} | {} | {} | {} | {} |\n",
+            "| `{}` | `{}` | {:.3} | `{}` | `{}` | {} | `{}` | `{}` | {} | `{}` | `{}` | {} | {} | {} | {} | {} | {} | {} | {} |\n",
             short_sig(&row.signature),
             row.source_name,
             row.latency_ms,
@@ -1310,6 +1379,9 @@ fn report_markdown(report: &ReportOutput) -> String {
             leader_label(&row.landed_leader_identity, &row.landed_leader_city),
             row.landed_leader_client,
             fmt_u64(row.processed_slot_index),
+            fmt_u64(row.entry_index),
+            fmt_u64(row.tx_index_in_entry),
+            fmt_u64(row.entry_executed_transaction_count),
             fmt_u64(row.transaction_fee_lamports),
             fmt_u64(row.route_tip_generated_lamports),
             fmt_u64(row.route_tip_landed_lamports),
@@ -1414,6 +1486,11 @@ details{background:#fff;border:1px solid #dfe5e8;border-radius:8px;padding:14px;
             "submitted but not found in landing streams".to_string(),
         ),
         (
+            "Entry placements",
+            report.totals.entry_placements.to_string(),
+            "processed tx index joined to Yellowstone entry range".to_string(),
+        ),
+        (
             "Same-slot observed",
             primary
                 .map(|row| {
@@ -1451,7 +1528,7 @@ details{background:#fff;border:1px solid #dfe5e8;border-radius:8px;padding:14px;
     }
     out.push_str("</div></section>");
 
-    out.push_str("<section class=\"section\"><h2>Methodology</h2><div class=\"method-grid\"><div class=\"method-card\"><b>What was sent</b><span class=\"muted\">Memo-free self-transfer with compute budget instructions. Fees and route tips are read from signed transaction metadata and observed route-tip signatures.</span></div><div class=\"method-card\"><b>Landing clock</b><span class=\"muted\">Latency uses the first matched observation across configured streams. Usually this is SubscribeDeshred; processed is used when it is first or only.</span></div><div class=\"method-card\"><b>Block position</b><span class=\"muted\">Transaction index comes from Yellowstone processed metadata, because deshred observations normally do not carry canonical block index.</span></div><div class=\"method-card\"><b>What ACK means</b><span class=\"muted\">ACK is retained only as a sender diagnostic. It is not leader admission, not landing proof, and not used as the product latency claim.</span></div></div><div class=\"note\">Generated only from local benchmark artifacts. Leader metadata comes from saved <code>getLeaderSlots</code> snapshots captured during the run; no ClickHouse or private database join is required.</div>");
+    out.push_str("<section class=\"section\"><h2>Methodology</h2><div class=\"method-grid\"><div class=\"method-card\"><b>What was sent</b><span class=\"muted\">Memo-free self-transfer with compute budget instructions. Fees and route tips are read from signed transaction metadata and observed route-tip signatures.</span></div><div class=\"method-card\"><b>Landing clock</b><span class=\"muted\">Latency uses the first matched observation across configured streams. Usually this is SubscribeDeshred; processed is used when it is first or only.</span></div><div class=\"method-card\"><b>Block position</b><span class=\"muted\">Transaction index comes from Yellowstone processed metadata. Optional entry placement joins that index to Yellowstone entry ranges when <code>--collect-entries</code> is enabled.</span></div><div class=\"method-card\"><b>What ACK means</b><span class=\"muted\">ACK is retained only as a sender diagnostic. It is not leader admission, not landing proof, and not used as the product latency claim.</span></div></div><div class=\"note\">Generated only from local benchmark artifacts. Leader metadata comes from saved <code>getLeaderSlots</code> snapshots captured during the run; no ClickHouse or private database join is required. Entry placement is block-record context, not packet-arrival time at the leader.</div>");
     for warning in &report.warnings {
         out.push_str(&format!(
             "<div class=\"note warning\"><b>Warning:</b> {}</div>",
@@ -1480,10 +1557,10 @@ details{background:#fff;border:1px solid #dfe5e8;border-radius:8px;padding:14px;
     out.push_str("</tbody></table></div></section>");
 
     out.push_str("<section class=\"section\"><h2>Landing Observations</h2><p class=\"muted\">Landing latency uses the earliest observation per transaction across configured streams. Processed metadata is not forced to be the timing source; it is used for transaction index when available.</p>");
-    out.push_str("<div class=\"table-wrap\"><table><thead><tr><th>First source</th><th>Count</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>max ms</th><th>same-slot</th><th>slot delta p50</th><th>slot delta p90</th><th>slot index p50</th></tr></thead><tbody>");
+    out.push_str("<div class=\"table-wrap\"><table><thead><tr><th>First source</th><th>Count</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>max ms</th><th>same-slot</th><th>slot delta p50</th><th>slot delta p90</th><th>slot index p50</th><th>entry index p50</th><th>tx-in-entry p50</th></tr></thead><tbody>");
     for row in &report.source_summaries {
         out.push_str(&format!(
-            "<tr><td class=\"left\"><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{} / {:.1}%</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            "<tr><td class=\"left\"><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{} / {:.1}%</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
             html_escape(&row.source_name),
             row.count,
             fmt_ms(row.submit_to_observed_p50_ms),
@@ -1495,6 +1572,8 @@ details{background:#fff;border:1px solid #dfe5e8;border-radius:8px;padding:14px;
             fmt_i64(row.landed_slot_delta_p50),
             fmt_i64(row.landed_slot_delta_p90),
             fmt_u64(row.slot_index_p50),
+            fmt_u64(row.entry_index_p50),
+            fmt_u64(row.tx_index_in_entry_p50),
         ));
     }
     out.push_str("</tbody></table></div></section>");
@@ -1551,10 +1630,10 @@ details{background:#fff;border:1px solid #dfe5e8;border-radius:8px;padding:14px;
     }
     out.push_str("</section>");
 
-    out.push_str("<section class=\"section\"><h2>Tail Events</h2><p class=\"muted\">Slowest first-observed caller transactions. Timing uses the first stream observation; transaction index uses processed metadata when available. Full signatures and CSV/JSON live in <a href=\"tails.html\">the tail artifact</a>.</p><div class=\"table-wrap\"><table><thead><tr><th>Signature</th><th>Source</th><th>Latency ms</th><th>Arm</th><th>Routes</th><th>Send slot</th><th>Send leader</th><th>Send client</th><th>Landed slot</th><th>Landed leader</th><th>Landed client</th><th>Tx index</th><th>Tx fee</th><th>Route tip gen</th><th>Route tip landed</th><th>Total landed</th></tr></thead><tbody>");
+    out.push_str("<section class=\"section\"><h2>Tail Events</h2><p class=\"muted\">Slowest first-observed caller transactions. Timing uses the first stream observation; transaction index uses processed metadata when available. Entry fields are present only when entry collection was enabled. Full signatures and CSV/JSON live in <a href=\"tails.html\">the tail artifact</a>.</p><div class=\"table-wrap\"><table><thead><tr><th>Signature</th><th>Source</th><th>Latency ms</th><th>Arm</th><th>Routes</th><th>Send slot</th><th>Send leader</th><th>Send client</th><th>Landed slot</th><th>Landed leader</th><th>Landed client</th><th>Tx index</th><th>Entry</th><th>Tx-in-entry</th><th>Entry txs</th><th>Tx fee</th><th>Route tip gen</th><th>Route tip landed</th><th>Total landed</th></tr></thead><tbody>");
     for row in &report.tail_events {
         out.push_str(&format!(
-            "<tr><td class=\"left sig\"><code>{}</code></td><td><code>{}</code></td><td>{:.3}</td><td><code>{}</code></td><td class=\"left\"><code>{}</code></td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            "<tr><td class=\"left sig\"><code>{}</code></td><td><code>{}</code></td><td>{:.3}</td><td><code>{}</code></td><td class=\"left\"><code>{}</code></td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
             html_escape(&short_sig(&row.signature)),
             html_escape(&row.source_name),
             row.latency_ms,
@@ -1567,6 +1646,9 @@ details{background:#fff;border:1px solid #dfe5e8;border-radius:8px;padding:14px;
             html_escape(&leader_label(&row.landed_leader_identity, &row.landed_leader_city)),
             html_escape(&row.landed_leader_client),
             fmt_u64(row.processed_slot_index),
+            fmt_u64(row.entry_index),
+            fmt_u64(row.tx_index_in_entry),
+            fmt_u64(row.entry_executed_transaction_count),
             fmt_u64(row.transaction_fee_lamports),
             fmt_u64(row.route_tip_generated_lamports),
             fmt_u64(row.route_tip_landed_lamports),
@@ -1653,7 +1735,7 @@ fn write_unobserved_artifacts(artifact_dir: &Path, rows: &[UnobservedEvent]) -> 
 
 fn tail_events_csv(rows: &[TailEvent]) -> String {
     let mut out = String::new();
-    out.push_str("signature,source_name,latency_ms,policy_arm,route_policy,selected_routes,send_slot,send_leader_identity,send_leader_city,send_leader_client,landed_slot,landed_leader_identity,landed_leader_city,landed_leader_client,first_observed_slot_index,processed_slot_index,compute_unit_price_microlamports,base_fee_lamports,priority_fee_lamports,transaction_fee_lamports,route_tip_generated_lamports,route_tip_landed_lamports,total_generated_spend_lamports,total_landed_spend_lamports,comparison_group_id\n");
+    out.push_str("signature,source_name,latency_ms,policy_arm,route_policy,selected_routes,send_slot,send_leader_identity,send_leader_city,send_leader_client,landed_slot,landed_leader_identity,landed_leader_city,landed_leader_client,first_observed_slot_index,processed_slot_index,entry_index,tx_index_in_entry,entry_executed_transaction_count,compute_unit_price_microlamports,base_fee_lamports,priority_fee_lamports,transaction_fee_lamports,route_tip_generated_lamports,route_tip_landed_lamports,total_generated_spend_lamports,total_landed_spend_lamports,comparison_group_id\n");
     for row in rows {
         let fields = [
             row.signature.clone(),
@@ -1672,6 +1754,9 @@ fn tail_events_csv(rows: &[TailEvent]) -> String {
             row.landed_leader_client.clone(),
             fmt_u64(row.first_observed_slot_index),
             fmt_u64(row.processed_slot_index),
+            fmt_u64(row.entry_index),
+            fmt_u64(row.tx_index_in_entry),
+            fmt_u64(row.entry_executed_transaction_count),
             row.compute_unit_price_microlamports
                 .map(|value| value.to_string())
                 .unwrap_or_default(),
@@ -1716,12 +1801,12 @@ fn tail_events_html(rows: &[TailEvent]) -> String {
     out.push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
     out.push_str("<style>*{box-sizing:border-box}body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:#f5f7f8;color:#17202a;line-height:1.45}main{max-width:1380px;margin:0 auto;padding:28px}.hero,.section{background:#fff;border:1px solid #dfe5e8;border-radius:8px;padding:20px;margin-bottom:16px}.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#667681;font-weight:700}h1{font-size:30px;margin:6px 0 8px}.muted{color:#667681}.links{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.pill{display:inline-flex;border:1px solid #d9e1e5;background:#f7fafb;border-radius:999px;padding:3px 8px;font-size:12px;color:#465760;text-decoration:none}.table-wrap{overflow-x:auto;border:1px solid #e2e8eb;border-radius:8px;background:#fff}table{border-collapse:collapse;width:100%;min-width:1280px}th,td{border-bottom:1px solid #edf1f3;padding:8px 10px;text-align:right;vertical-align:top;font-size:13px;white-space:nowrap}th:first-child,td:first-child,td.left{text-align:left}th{background:#f0f4f6;color:#41515b;font-weight:700}.sig{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all;white-space:normal}code{background:#eef2f4;padding:1px 5px;border-radius:4px}@media(max-width:720px){main{padding:14px}.hero,.section{padding:16px}h1{font-size:24px}}</style>");
     out.push_str("</head><body><main><section class=\"hero\"><div class=\"eyebrow\">RPCEdge benchmark tail inspection</div><h1>Tail Events</h1>");
-    out.push_str("<p class=\"muted\">Full signatures and route arms for the slowest first-observed landing events. Latency uses the first stream observation. Transaction index uses processed Yellowstone/gRPC metadata when available. Route-tip landed cost counts only observed tip signatures.</p>");
+    out.push_str("<p class=\"muted\">Full signatures and route arms for the slowest first-observed landing events. Latency uses the first stream observation. Transaction index uses processed Yellowstone/gRPC metadata when available. Entry placement is shown when <code>--collect-entries</code> was enabled. Route-tip landed cost counts only observed tip signatures.</p>");
     out.push_str("<div class=\"links\"><a class=\"pill\" href=\"./\">Full report</a><a class=\"pill\" href=\"./policy-comparison/\">Policy comparison</a><a class=\"pill\" href=\"tail-events.csv\">CSV</a><a class=\"pill\" href=\"tail-events.json\">JSON</a></div></section>");
-    out.push_str("<section class=\"section\"><div class=\"table-wrap\"><table><thead><tr><th>Signature</th><th>First source</th><th>Latency ms</th><th>Arm</th><th>Routes</th><th>Send slot</th><th>Send leader</th><th>Send client</th><th>Landed slot</th><th>Landed leader</th><th>Landed client</th><th>Tx index</th><th>Tx fee</th><th>Route tip gen</th><th>Route tip landed</th><th>Total landed</th></tr></thead><tbody>");
+    out.push_str("<section class=\"section\"><div class=\"table-wrap\"><table><thead><tr><th>Signature</th><th>First source</th><th>Latency ms</th><th>Arm</th><th>Routes</th><th>Send slot</th><th>Send leader</th><th>Send client</th><th>Landed slot</th><th>Landed leader</th><th>Landed client</th><th>Tx index</th><th>Entry</th><th>Tx-in-entry</th><th>Entry txs</th><th>Tx fee</th><th>Route tip gen</th><th>Route tip landed</th><th>Total landed</th></tr></thead><tbody>");
     for row in rows {
         out.push_str(&format!(
-            "<tr><td class=\"left sig\">{}</td><td><code>{}</code></td><td>{:.3}</td><td><code>{}</code></td><td class=\"left\"><code>{}</code></td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            "<tr><td class=\"left sig\">{}</td><td><code>{}</code></td><td>{:.3}</td><td><code>{}</code></td><td class=\"left\"><code>{}</code></td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td class=\"left\">{}</td><td class=\"left\">{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
             html_escape(&row.signature),
             html_escape(&row.source_name),
             row.latency_ms,
@@ -1734,6 +1819,9 @@ fn tail_events_html(rows: &[TailEvent]) -> String {
             html_escape(&leader_label(&row.landed_leader_identity, &row.landed_leader_city)),
             html_escape(&row.landed_leader_client),
             fmt_u64(row.processed_slot_index),
+            fmt_u64(row.entry_index),
+            fmt_u64(row.tx_index_in_entry),
+            fmt_u64(row.entry_executed_transaction_count),
             fmt_u64(row.transaction_fee_lamports),
             fmt_u64(row.route_tip_generated_lamports),
             fmt_u64(row.route_tip_landed_lamports),

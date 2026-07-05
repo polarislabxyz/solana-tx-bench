@@ -86,7 +86,8 @@ cargo run --release -- run-leader-paced \
   --leader-run-concurrency 1 \
   --slot-trigger grpc_slot \
   --capture-leader-slots \
-  --collect-rpcedge
+  --collect-rpcedge \
+  --collect-entries
 ```
 
 This sends at most one transaction for each observed contiguous leader run,
@@ -102,6 +103,13 @@ testing burst behavior.
 By default, `run-leader-paced` is driven by the RPCEdge Yellowstone gRPC slot
 stream (`--slot-trigger grpc_slot`). This avoids `getSlot` polling for send
 timing. `--slot-trigger rpc_poll` exists only as a debug fallback.
+
+`--collect-entries` adds a normal Yellowstone entry subscription beside
+SubscribeDeshred and processed transaction subscriptions. The runner stores
+slot-wide `entries.ndjson` and derives `entry-placements.ndjson` by joining the
+processed transaction `slot_index` into each entry's transaction range. This is
+block-placement context for "did we land early in the produced block"; it is
+not packet-arrival time at the leader and it is not an exact PoH tick label.
 
 `--capture-leader-slots` calls JSON-RPC `getLeaderSlots` before the run and
 writes `leader-slots-snapshot.json` beside the samples. When pointed at
@@ -149,7 +157,8 @@ cargo run --release -- run-leader-paced \
   --slot-trigger grpc_slot \
   --route-strategy paired_route_policies \
   --capture-leader-slots \
-  --collect-rpcedge
+  --collect-rpcedge \
+  --collect-entries
 ```
 
 The paired arms are:

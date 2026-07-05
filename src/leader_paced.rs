@@ -7,8 +7,8 @@ use crate::{
         capture_leader_slots_snapshot, write_leader_slots_snapshot, LeaderSlotsCaptureConfig,
     },
     observations::{
-        observation_summary_markdown, summarize_observations, MatchedObservationSummary,
-        ObservationEvent,
+        observation_summary_markdown, summarize_observations, EntryEvent, EntryPlacementEvent,
+        MatchedObservationSummary, ObservationEvent, ObservationSourceKind,
     },
     provider_observers::add_default_provider_observation_accounts,
     slot_signal::{spawn_grpc_slot_signal, GrpcSlotSignalConfig, SlotSignal},
@@ -107,6 +107,7 @@ pub struct RpcEdgeLeaderCollector {
     pub endpoint: String,
     pub x_token: Option<String>,
     pub min_sources: usize,
+    pub collect_entries: bool,
 }
 
 #[derive(Debug)]
@@ -279,6 +280,7 @@ pub async fn run_leader_paced(
             duration,
             account_include,
             min_sources: rpcedge.min_sources,
+            collect_entries: rpcedge.collect_entries,
         };
         tokio::spawn(async move { collect_rpcedge_observations(collector_config).await })
     });
@@ -498,6 +500,7 @@ pub async fn run_leader_paced(
             &test_id,
             &samples,
             &collector.observations_path,
+            collector.entries_path.as_deref(),
             min_sources,
         )?)
     } else {
@@ -1039,6 +1042,7 @@ fn write_matched_observation_summary(
     test_id: &str,
     samples: &[BenchSample],
     observations_path: &std::path::Path,
+    entries_path: Option<&std::path::Path>,
     min_sources: usize,
 ) -> Result<MatchedObservationSummary> {
     #[derive(Debug, Clone)]
@@ -1128,6 +1132,10 @@ fn write_matched_observation_summary(
         .flush()
         .context("flush matched observations")?;
 
+    if let Some(entries_path) = entries_path {
+        write_entry_placements(run_dir, test_id, &matched_events, entries_path)?;
+    }
+
     let summary = summarize_observations(test_id, &matched_events, min_sources);
     fs::write(
         run_dir.join("matched-observation-summary.json"),
@@ -1140,6 +1148,97 @@ fn write_matched_observation_summary(
     )
     .context("write matched observation summary markdown")?;
     Ok(summary)
+}
+
+fn write_entry_placements(
+    run_dir: &std::path::Path,
+    test_id: &str,
+    matched_events: &[ObservationEvent],
+    entries_path: &std::path::Path,
+) -> Result<Vec<EntryPlacementEvent>> {
+    let entries = read_entry_events(entries_path)?;
+    let mut entries_by_slot = BTreeMap::<u64, Vec<EntryEvent>>::new();
+    for entry in entries {
+        entries_by_slot.entry(entry.slot).or_default().push(entry);
+    }
+    for entries in entries_by_slot.values_mut() {
+        entries.sort_by_key(|entry| (entry.starting_transaction_index, entry.entry_index));
+    }
+
+    let mut placements = Vec::new();
+    for event in matched_events {
+        let (Some(slot), Some(slot_index)) = (event.slot, event.slot_index) else {
+            continue;
+        };
+        let Some(entry) = entries_by_slot
+            .get(&slot)
+            .and_then(|entries| entry_for_slot_index(entries, slot_index))
+        else {
+            continue;
+        };
+        placements.push(EntryPlacementEvent {
+            schema_version: 1,
+            test_id: test_id.to_string(),
+            signature: event.signature.clone(),
+            signature_role: event.signature_role.clone(),
+            caller_signature: event.caller_signature.clone(),
+            source_name: entry.source_name.clone(),
+            source_kind: ObservationSourceKind::YellowstoneEntry,
+            observed_at: entry.observed_at,
+            slot,
+            slot_index,
+            entry_index: entry.entry_index,
+            tx_index_in_entry: slot_index.saturating_sub(entry.starting_transaction_index),
+            entry_num_hashes: entry.num_hashes,
+            entry_hash: entry.entry_hash.clone(),
+            entry_executed_transaction_count: entry.executed_transaction_count,
+            entry_starting_transaction_index: entry.starting_transaction_index,
+        });
+    }
+
+    let placements_path = run_dir.join("entry-placements.ndjson");
+    let mut writer = BufWriter::new(
+        File::create(&placements_path)
+            .with_context(|| format!("create {}", placements_path.display()))?,
+    );
+    for placement in &placements {
+        serde_json::to_writer(&mut writer, placement).context("write entry placement")?;
+        writer
+            .write_all(b"\n")
+            .context("write entry placement newline")?;
+    }
+    writer.flush().context("flush entry placements")?;
+    Ok(placements)
+}
+
+fn read_entry_events(path: &std::path::Path) -> Result<Vec<EntryEvent>> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let file = File::open(path).with_context(|| format!("open {}", path.display()))?;
+    let mut rows = Vec::new();
+    for (line_no, line) in BufReader::new(file).lines().enumerate() {
+        let line = line.with_context(|| format!("read {}:{}", path.display(), line_no + 1))?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        rows.push(
+            serde_json::from_str::<EntryEvent>(&line)
+                .with_context(|| format!("parse {}:{}", path.display(), line_no + 1))?,
+        );
+    }
+    Ok(rows)
+}
+
+fn entry_for_slot_index(entries: &[EntryEvent], slot_index: u64) -> Option<&EntryEvent> {
+    entries.iter().find(|entry| {
+        entry.executed_transaction_count > 0
+            && slot_index >= entry.starting_transaction_index
+            && slot_index
+                < entry
+                    .starting_transaction_index
+                    .saturating_add(entry.executed_transaction_count)
+    })
 }
 
 fn default_leader_paced_test_id() -> String {

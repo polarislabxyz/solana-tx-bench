@@ -12,6 +12,7 @@ Primary public artifact boundary:
 signed transaction generated locally
   -> configured provider adapter
   -> observed by RPCEdge Yellowstone processed and SubscribeDeshred
+  -> optionally joined to Yellowstone entry placement
   -> matched by signature
   -> source percentile and win-rate report
 ```
@@ -27,6 +28,41 @@ signature + observed slot from public artifact
 The public tool should never require private ClickHouse or private validator
 metadata. `getLeaderSlots` is the portable enrichment API; the saved snapshot is
 part of the benchmark artifact.
+
+## Entry Placement And PoH
+
+Enable `--collect-entries` when the report needs block-position context beyond
+processed `slot_index`.
+
+The collector opens a normal Yellowstone `entry` subscription and records:
+
+- slot;
+- entry index in the block;
+- entry hash and `num_hashes`;
+- executed transaction count;
+- starting transaction index for that entry.
+
+After the run, the benchmark joins each processed transaction observation to the
+entry whose range contains `slot_index`:
+
+```text
+entry.starting_transaction_index
+  <= processed.slot_index
+  < entry.starting_transaction_index + entry.executed_transaction_count
+```
+
+This produces `entry-placements.ndjson` and lets the report show:
+
+- entry index;
+- transaction index inside the entry;
+- transaction count in that entry.
+
+Do not describe these fields as exact network-arrival time at the leader. They
+show where the leader recorded the transaction inside the produced block. A
+late entry placement can mean the transaction arrived late, or that the leader
+held/queued/scheduled it late. Exact PoH tick buckets require either a careful
+full-entry tick derivation or an external block-building source such as IBRL's
+per-slot `poh_index` API.
 
 ## Transaction Shape
 
@@ -81,7 +117,8 @@ cargo run --release -- run-leader-paced \
   --leader-run-concurrency 1 \
   --slot-trigger grpc_slot \
   --capture-leader-slots \
-  --collect-rpcedge
+  --collect-rpcedge \
+  --collect-entries
 ```
 
 The default trigger is `grpc_slot`: the runner subscribes to RPCEdge

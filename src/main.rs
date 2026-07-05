@@ -52,6 +52,8 @@ enum Command {
         slot_signal_endpoint: Option<String>,
         #[arg(long)]
         collect_rpcedge: bool,
+        #[arg(long)]
+        collect_entries: bool,
         #[arg(long, env = "RPCEDGE_GRPC_URL")]
         rpcedge_endpoint: Option<String>,
         #[arg(long, env = "YELLOWSTONE_X_TOKEN")]
@@ -92,6 +94,8 @@ enum Command {
         duration_seconds: u64,
         #[arg(long, value_delimiter = ',')]
         account_include: Vec<String>,
+        #[arg(long)]
+        collect_entries: bool,
         #[arg(long, default_value_t = 2)]
         min_sources: usize,
     },
@@ -165,6 +169,7 @@ async fn main() -> Result<()> {
             slot_trigger,
             slot_signal_endpoint,
             collect_rpcedge,
+            collect_entries,
             rpcedge_endpoint,
             x_token,
             observe_extra_seconds,
@@ -193,6 +198,7 @@ async fn main() -> Result<()> {
                     )?,
                     x_token,
                     min_sources,
+                    collect_entries,
                 })
             } else {
                 None
@@ -229,6 +235,7 @@ async fn main() -> Result<()> {
             println!("provider_samples={}", output.provider_samples);
             if let Some(collector) = &output.collector {
                 println!("rpcedge_observations={}", collector.total_observations);
+                println!("rpcedge_entries={}", collector.total_entries);
                 println!(
                     "rpcedge_matched_signatures={}",
                     collector.matched_signatures
@@ -263,6 +270,7 @@ async fn main() -> Result<()> {
             output_dir,
             duration_seconds,
             account_include,
+            collect_entries,
             min_sources,
         } => {
             let test_id = test_id.unwrap_or_else(|| {
@@ -283,13 +291,18 @@ async fn main() -> Result<()> {
                 duration: std::time::Duration::from_secs(duration_seconds),
                 account_include,
                 min_sources,
+                collect_entries,
             })
             .await?;
             println!("test_id={}", output.test_id);
             println!("output_dir={}", output.output_dir.display());
             println!("observations={}", output.total_observations);
+            println!("entries={}", output.total_entries);
             println!("matched_signatures={}", output.matched_signatures);
             println!("observations_file={}", output.observations_path.display());
+            if let Some(path) = &output.entries_path {
+                println!("entries_file={}", path.display());
+            }
             println!("summary={}", output.summary_path.display());
         }
         Command::SummarizeObservations {
