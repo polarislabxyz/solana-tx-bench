@@ -1069,7 +1069,10 @@ mod external_sender_tests {
 
     #[test]
     fn helius_sender_url_is_bare_when_no_options() {
-        assert_eq!(helius_sender_url("http://h/fast", false, None), "http://h/fast");
+        assert_eq!(
+            helius_sender_url("http://h/fast", false, None),
+            "http://h/fast"
+        );
     }
 
     #[test]
