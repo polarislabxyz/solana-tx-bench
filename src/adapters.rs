@@ -826,6 +826,50 @@ fn provider_error(status: StatusCode, class: &str, value: &serde_json::Value) ->
     }
 }
 
+/// Join query parameters onto a base URL, using `?` or `&` as appropriate and
+/// skipping parameters whose value is empty. Existing query strings are honored.
+fn append_query(base: &str, params: &[(&str, &str)]) -> String {
+    let mut url = base.to_string();
+    let mut has_query = base.contains('?');
+    for (key, value) in params {
+        if value.is_empty() {
+            continue;
+        }
+        url.push(if has_query { '&' } else { '?' });
+        url.push_str(key);
+        url.push('=');
+        url.push_str(value);
+        has_query = true;
+    }
+    url
+}
+
+fn helius_sender_default_endpoint() -> String {
+    "https://sender.helius-rpc.com/fast".to_string()
+}
+
+/// Build the effective Helius Sender URL. `swqos_only` selects the cheaper
+/// SWQoS-only path; `api_key` is only needed for approved higher-TPS accounts.
+fn helius_sender_url(base: &str, swqos_only: bool, api_key: Option<&str>) -> String {
+    let mut params: Vec<(&str, &str)> = Vec::new();
+    if swqos_only {
+        params.push(("swqos_only", "true"));
+    }
+    if let Some(key) = api_key {
+        params.push(("api-key", key));
+    }
+    append_query(base, &params)
+}
+
+/// Build the effective Astralane Iris URL. Astralane passes the API key as the
+/// `api-key` query parameter (its primary auth mechanism).
+fn astralane_sender_url(base: &str, api_key: Option<&str>) -> String {
+    match api_key {
+        Some(key) => append_query(base, &[("api-key", key)]),
+        None => base.to_string(),
+    }
+}
+
 pub fn base64_tx(tx: &[u8]) -> String {
     STANDARD.encode(tx)
 }
@@ -834,4 +878,63 @@ pub fn decode_tx_base64(encoded: &str) -> Result<Vec<u8>> {
     STANDARD
         .decode(encoded)
         .map_err(|err| anyhow!("decode base64 transaction: {err}"))
+}
+
+#[cfg(test)]
+mod external_sender_tests {
+    use super::*;
+    use wiremock::{
+        matchers::{body_json, method, path},
+        Mock, MockServer, ResponseTemplate,
+    };
+
+    #[test]
+    fn append_query_uses_question_mark_then_ampersand() {
+        assert_eq!(
+            append_query("http://h/fast", &[("a", "1"), ("b", "2")]),
+            "http://h/fast?a=1&b=2"
+        );
+    }
+
+    #[test]
+    fn append_query_appends_with_ampersand_when_base_has_query() {
+        assert_eq!(
+            append_query("http://h/fast?x=9", &[("a", "1")]),
+            "http://h/fast?x=9&a=1"
+        );
+    }
+
+    #[test]
+    fn append_query_skips_empty_values() {
+        assert_eq!(
+            append_query("http://h/fast", &[("a", ""), ("b", "2")]),
+            "http://h/fast?b=2"
+        );
+    }
+
+    #[test]
+    fn helius_sender_url_adds_swqos_and_key() {
+        assert_eq!(
+            helius_sender_url("http://h/fast", true, Some("K")),
+            "http://h/fast?swqos_only=true&api-key=K"
+        );
+    }
+
+    #[test]
+    fn helius_sender_url_is_bare_when_no_options() {
+        assert_eq!(helius_sender_url("http://h/fast", false, None), "http://h/fast");
+    }
+
+    #[test]
+    fn astralane_sender_url_adds_key() {
+        assert_eq!(
+            astralane_sender_url("http://g/iris", Some("K")),
+            "http://g/iris?api-key=K"
+        );
+    }
+
+    #[test]
+    fn astralane_sender_url_is_bare_without_key() {
+        assert_eq!(astralane_sender_url("http://g/iris", None), "http://g/iris");
+    }
 }
