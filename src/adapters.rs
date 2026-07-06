@@ -19,6 +19,8 @@ pub enum ProviderKind {
     RpcedgeRawHttp,
     RpcedgeRouteAwareHttp,
     RpcedgeQuicRawTx,
+    HeliusSender,
+    AstralaneSender,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -59,6 +61,25 @@ pub enum ProviderConfig {
         #[serde(default)]
         route_results: bool,
     },
+    HeliusSender {
+        #[serde(default = "helius_sender_default_endpoint")]
+        endpoint: String,
+        #[serde(default)]
+        api_key_env: Option<String>,
+        #[serde(default)]
+        swqos_only: bool,
+        #[serde(default)]
+        headers: HashMap<String, String>,
+    },
+    AstralaneSender {
+        endpoint: String,
+        #[serde(default)]
+        api_key_env: Option<String>,
+        #[serde(default)]
+        mev_protect: bool,
+        #[serde(default)]
+        headers: HashMap<String, String>,
+    },
 }
 
 impl ProviderConfig {
@@ -68,6 +89,8 @@ impl ProviderConfig {
             Self::RpcedgeRawHttp { .. } => ProviderKind::RpcedgeRawHttp,
             Self::RpcedgeRouteAwareHttp { .. } => ProviderKind::RpcedgeRouteAwareHttp,
             Self::RpcedgeQuicRawTx { .. } => ProviderKind::RpcedgeQuicRawTx,
+            Self::HeliusSender { .. } => ProviderKind::HeliusSender,
+            Self::AstralaneSender { .. } => ProviderKind::AstralaneSender,
         }
     }
 
@@ -312,6 +335,37 @@ pub fn build_adapter(
             timeout,
             client: None,
         })),
+        ProviderConfig::HeliusSender {
+            endpoint,
+            api_key_env,
+            swqos_only,
+            headers,
+        } => {
+            let api_key = read_optional_secret(api_key_env)?;
+            let url = helius_sender_url(&endpoint, swqos_only, api_key.as_deref());
+            Ok(Box::new(HeliusSenderAdapter {
+                name,
+                url,
+                headers,
+                client,
+            }))
+        }
+        ProviderConfig::AstralaneSender {
+            endpoint,
+            api_key_env,
+            mev_protect,
+            headers,
+        } => {
+            let api_key = read_optional_secret(api_key_env)?;
+            let url = astralane_sender_url(&endpoint, api_key.as_deref());
+            Ok(Box::new(AstralaneSenderAdapter {
+                name,
+                url,
+                mev_protect,
+                headers,
+                client,
+            }))
+        }
     }
 }
 
@@ -356,6 +410,21 @@ struct RpcedgeQuicRawTxAdapter {
     route_results: bool,
     timeout: Duration,
     client: Option<QuicRelayClient>,
+}
+
+struct HeliusSenderAdapter {
+    name: String,
+    url: String,
+    headers: HashMap<String, String>,
+    client: reqwest::Client,
+}
+
+struct AstralaneSenderAdapter {
+    name: String,
+    url: String,
+    mev_protect: bool,
+    headers: HashMap<String, String>,
+    client: reqwest::Client,
 }
 
 #[async_trait]
@@ -577,6 +646,84 @@ impl ProviderAdapter for RpcedgeQuicRawTxAdapter {
                 err,
             ),
         }
+    }
+}
+
+#[async_trait]
+impl ProviderAdapter for HeliusSenderAdapter {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn kind(&self) -> ProviderKind {
+        ProviderKind::HeliusSender
+    }
+
+    async fn send_transaction(&self, _tx: &[u8], ctx: &SendContext) -> ProviderAck {
+        let body = json!({
+            "jsonrpc": "2.0",
+            "id": ctx.iteration,
+            "method": "sendTransaction",
+            "params": [
+                ctx.tx_base64,
+                {
+                    "encoding": "base64",
+                    "skipPreflight": true,
+                    "maxRetries": 0
+                }
+            ]
+        });
+        send_json(
+            &self.client,
+            &self.url,
+            &self.headers,
+            None,
+            self.name(),
+            self.kind(),
+            ctx,
+            body,
+            parse_json_rpc_response,
+        )
+        .await
+    }
+}
+
+#[async_trait]
+impl ProviderAdapter for AstralaneSenderAdapter {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn kind(&self) -> ProviderKind {
+        ProviderKind::AstralaneSender
+    }
+
+    async fn send_transaction(&self, _tx: &[u8], ctx: &SendContext) -> ProviderAck {
+        let mut params = vec![
+            json!(ctx.tx_base64),
+            json!({"encoding": "base64", "skipPreflight": true}),
+        ];
+        if self.mev_protect {
+            params.push(json!({"mevProtect": true}));
+        }
+        let body = json!({
+            "jsonrpc": "2.0",
+            "id": ctx.iteration,
+            "method": "sendTransaction",
+            "params": params,
+        });
+        send_json(
+            &self.client,
+            &self.url,
+            &self.headers,
+            None,
+            self.name(),
+            self.kind(),
+            ctx,
+            body,
+            parse_json_rpc_response,
+        )
+        .await
     }
 }
 
@@ -826,6 +973,50 @@ fn provider_error(status: StatusCode, class: &str, value: &serde_json::Value) ->
     }
 }
 
+/// Join query parameters onto a base URL, using `?` or `&` as appropriate and
+/// skipping parameters whose value is empty. Existing query strings are honored.
+fn append_query(base: &str, params: &[(&str, &str)]) -> String {
+    let mut url = base.to_string();
+    let mut has_query = base.contains('?');
+    for (key, value) in params {
+        if value.is_empty() {
+            continue;
+        }
+        url.push(if has_query { '&' } else { '?' });
+        url.push_str(key);
+        url.push('=');
+        url.push_str(value);
+        has_query = true;
+    }
+    url
+}
+
+fn helius_sender_default_endpoint() -> String {
+    "https://sender.helius-rpc.com/fast".to_string()
+}
+
+/// Build the effective Helius Sender URL. `swqos_only` selects the cheaper
+/// SWQoS-only path; `api_key` is only needed for approved higher-TPS accounts.
+fn helius_sender_url(base: &str, swqos_only: bool, api_key: Option<&str>) -> String {
+    let mut params: Vec<(&str, &str)> = Vec::new();
+    if swqos_only {
+        params.push(("swqos_only", "true"));
+    }
+    if let Some(key) = api_key {
+        params.push(("api-key", key));
+    }
+    append_query(base, &params)
+}
+
+/// Build the effective Astralane Iris URL. Astralane passes the API key as the
+/// `api-key` query parameter (its primary auth mechanism).
+fn astralane_sender_url(base: &str, api_key: Option<&str>) -> String {
+    match api_key {
+        Some(key) => append_query(base, &[("api-key", key)]),
+        None => base.to_string(),
+    }
+}
+
 pub fn base64_tx(tx: &[u8]) -> String {
     STANDARD.encode(tx)
 }
@@ -834,4 +1025,306 @@ pub fn decode_tx_base64(encoded: &str) -> Result<Vec<u8>> {
     STANDARD
         .decode(encoded)
         .map_err(|err| anyhow!("decode base64 transaction: {err}"))
+}
+
+#[cfg(test)]
+mod external_sender_tests {
+    use super::*;
+    use wiremock::{
+        matchers::{body_json, method, path},
+        Mock, MockServer, ResponseTemplate,
+    };
+
+    #[test]
+    fn append_query_uses_question_mark_then_ampersand() {
+        assert_eq!(
+            append_query("http://h/fast", &[("a", "1"), ("b", "2")]),
+            "http://h/fast?a=1&b=2"
+        );
+    }
+
+    #[test]
+    fn append_query_appends_with_ampersand_when_base_has_query() {
+        assert_eq!(
+            append_query("http://h/fast?x=9", &[("a", "1")]),
+            "http://h/fast?x=9&a=1"
+        );
+    }
+
+    #[test]
+    fn append_query_skips_empty_values() {
+        assert_eq!(
+            append_query("http://h/fast", &[("a", ""), ("b", "2")]),
+            "http://h/fast?b=2"
+        );
+    }
+
+    #[test]
+    fn helius_sender_url_adds_swqos_and_key() {
+        assert_eq!(
+            helius_sender_url("http://h/fast", true, Some("K")),
+            "http://h/fast?swqos_only=true&api-key=K"
+        );
+    }
+
+    #[test]
+    fn helius_sender_url_is_bare_when_no_options() {
+        assert_eq!(
+            helius_sender_url("http://h/fast", false, None),
+            "http://h/fast"
+        );
+    }
+
+    #[test]
+    fn astralane_sender_url_adds_key() {
+        assert_eq!(
+            astralane_sender_url("http://g/iris", Some("K")),
+            "http://g/iris?api-key=K"
+        );
+    }
+
+    #[test]
+    fn astralane_sender_url_is_bare_without_key() {
+        assert_eq!(astralane_sender_url("http://g/iris", None), "http://g/iris");
+    }
+
+    fn ctx_for(sig: &str, tx_base64: &str) -> SendContext {
+        SendContext {
+            test_id: "test".to_string(),
+            iteration: 0,
+            signature: sig.to_string(),
+            tx_base64: tx_base64.to_string(),
+            timeout: Duration::from_secs(2),
+            route_selection: None,
+            leader_client_family: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn helius_sender_reports_accepted_signature() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/fast"))
+            .and(body_json(json!({
+                "jsonrpc": "2.0",
+                "id": 0,
+                "method": "sendTransaction",
+                "params": ["QUJD", {"encoding": "base64", "skipPreflight": true, "maxRetries": 0}]
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "jsonrpc": "2.0", "id": 0, "result": "SIG123"
+            })))
+            .mount(&server)
+            .await;
+
+        let adapter = build_adapter(
+            "helius".to_string(),
+            ProviderConfig::HeliusSender {
+                endpoint: format!("{}/fast", server.uri()),
+                api_key_env: None,
+                swqos_only: false,
+                headers: HashMap::new(),
+            },
+            Duration::from_secs(2),
+        )
+        .unwrap();
+
+        let ack = adapter
+            .send_transaction(b"ABC", &ctx_for("LOCAL", "QUJD"))
+            .await;
+        assert!(ack.accepted);
+        assert_eq!(ack.returned_signature.as_deref(), Some("SIG123"));
+        assert_eq!(ack.status_code, Some(200));
+        assert!(ack.error.is_none());
+        assert_eq!(ack.provider_kind, ProviderKind::HeliusSender);
+    }
+
+    #[tokio::test]
+    async fn helius_sender_surfaces_provider_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "jsonrpc": "2.0", "id": 0, "error": {"code": -32005, "message": "tip too low"}
+            })))
+            .mount(&server)
+            .await;
+
+        let adapter = build_adapter(
+            "helius".to_string(),
+            ProviderConfig::HeliusSender {
+                endpoint: server.uri(),
+                api_key_env: None,
+                swqos_only: false,
+                headers: HashMap::new(),
+            },
+            Duration::from_secs(2),
+        )
+        .unwrap();
+
+        let ack = adapter
+            .send_transaction(b"ABC", &ctx_for("LOCAL", "QUJD"))
+            .await;
+        assert!(!ack.accepted);
+        assert_eq!(ack.error_class.as_deref(), Some("provider_error"));
+        assert!(ack.error.unwrap().contains("tip too low"));
+    }
+
+    #[tokio::test]
+    async fn helius_sender_flags_malformed_response() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("not json"))
+            .mount(&server)
+            .await;
+
+        let adapter = build_adapter(
+            "helius".to_string(),
+            ProviderConfig::HeliusSender {
+                endpoint: server.uri(),
+                api_key_env: None,
+                swqos_only: false,
+                headers: HashMap::new(),
+            },
+            Duration::from_secs(2),
+        )
+        .unwrap();
+
+        let ack = adapter
+            .send_transaction(b"ABC", &ctx_for("LOCAL", "QUJD"))
+            .await;
+        assert!(!ack.accepted);
+        assert_eq!(ack.error_class.as_deref(), Some("decode_error"));
+    }
+
+    #[tokio::test]
+    async fn helius_sender_reports_transport_error() {
+        let adapter = build_adapter(
+            "helius".to_string(),
+            ProviderConfig::HeliusSender {
+                endpoint: "http://127.0.0.1:1/fast".to_string(),
+                api_key_env: None,
+                swqos_only: false,
+                headers: HashMap::new(),
+            },
+            Duration::from_millis(500),
+        )
+        .unwrap();
+
+        let ack = adapter
+            .send_transaction(b"ABC", &ctx_for("LOCAL", "QUJD"))
+            .await;
+        assert!(!ack.accepted);
+        assert_eq!(ack.error_class.as_deref(), Some("transport_error"));
+    }
+
+    #[test]
+    fn helius_sender_config_uses_default_endpoint() {
+        let cfg: ProviderConfig = serde_yaml::from_str("kind: helius_sender\n").unwrap();
+        assert_eq!(cfg.kind(), ProviderKind::HeliusSender);
+        match cfg {
+            ProviderConfig::HeliusSender {
+                endpoint,
+                swqos_only,
+                api_key_env,
+                ..
+            } => {
+                assert_eq!(endpoint, "https://sender.helius-rpc.com/fast");
+                assert!(!swqos_only);
+                assert!(api_key_env.is_none());
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[tokio::test]
+    async fn astralane_sender_sends_two_element_params_by_default() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/iris"))
+            .and(body_json(json!({
+                "jsonrpc": "2.0",
+                "id": 0,
+                "method": "sendTransaction",
+                "params": ["QUJD", {"encoding": "base64", "skipPreflight": true}]
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "jsonrpc": "2.0", "id": 0, "result": "SIGA"
+            })))
+            .mount(&server)
+            .await;
+
+        let adapter = build_adapter(
+            "astralane".to_string(),
+            ProviderConfig::AstralaneSender {
+                endpoint: format!("{}/iris", server.uri()),
+                api_key_env: None,
+                mev_protect: false,
+                headers: HashMap::new(),
+            },
+            Duration::from_secs(2),
+        )
+        .unwrap();
+
+        let ack = adapter
+            .send_transaction(b"ABC", &ctx_for("LOCAL", "QUJD"))
+            .await;
+        assert!(ack.accepted);
+        assert_eq!(ack.returned_signature.as_deref(), Some("SIGA"));
+        assert_eq!(ack.provider_kind, ProviderKind::AstralaneSender);
+    }
+
+    #[tokio::test]
+    async fn astralane_sender_appends_mev_protect_object() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(body_json(json!({
+                "jsonrpc": "2.0",
+                "id": 0,
+                "method": "sendTransaction",
+                "params": ["QUJD", {"encoding": "base64", "skipPreflight": true}, {"mevProtect": true}]
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "jsonrpc": "2.0", "id": 0, "result": "SIGA"
+            })))
+            .mount(&server)
+            .await;
+
+        let adapter = build_adapter(
+            "astralane".to_string(),
+            ProviderConfig::AstralaneSender {
+                endpoint: server.uri(),
+                api_key_env: None,
+                mev_protect: true,
+                headers: HashMap::new(),
+            },
+            Duration::from_secs(2),
+        )
+        .unwrap();
+
+        let ack = adapter
+            .send_transaction(b"ABC", &ctx_for("LOCAL", "QUJD"))
+            .await;
+        assert!(ack.accepted);
+        assert_eq!(ack.returned_signature.as_deref(), Some("SIGA"));
+    }
+
+    #[test]
+    fn astralane_sender_config_round_trips() {
+        let cfg: ProviderConfig = serde_yaml::from_str(
+            "kind: astralane_sender\nendpoint: https://fra.gateway.astralane.io/iris\nmev_protect: true\n",
+        )
+        .unwrap();
+        assert_eq!(cfg.kind(), ProviderKind::AstralaneSender);
+        match cfg {
+            ProviderConfig::AstralaneSender {
+                endpoint,
+                mev_protect,
+                ..
+            } => {
+                assert_eq!(endpoint, "https://fra.gateway.astralane.io/iris");
+                assert!(mev_protect);
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
 }

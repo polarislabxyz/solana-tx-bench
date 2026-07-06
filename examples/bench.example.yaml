@@ -41,3 +41,17 @@ providers:
     routes:
       - tpu_quic
     server_name: "relay.rpcedge.com"
+
+  - name: helius-sender
+    kind: helius_sender
+    endpoint: "https://sender.helius-rpc.com/fast"
+    api_key_env: "HELIUS_SENDER_API_KEY" # optional; only for approved higher-TPS accounts
+    swqos_only: false
+    headers: {}
+
+  - name: astralane-sender
+    kind: astralane_sender
+    endpoint: "https://fra.gateway.astralane.io/iris"
+    api_key_env: "ASTRALANE_API_KEY"
+    mev_protect: false
+    headers: {}
