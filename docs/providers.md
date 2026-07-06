@@ -193,6 +193,42 @@ slow or fast today, the route list in the run manifest is the source of truth.
 `software_client_aware_jito_harmonic` means "generic TPU+Jito+Harmonic race for
 a Rakurai/Raiku leader", not a Rakurai-native route.
 
+## Helius Sender
+
+Adapter: `helius_sender`
+
+Direct submission to the Helius Sender endpoint using JSON-RPC `sendTransaction`
+with a base64 transaction, `skipPreflight: true`, and `maxRetries: 0`. Default
+endpoint `https://sender.helius-rpc.com/fast`; regional backend hosts
+(`slc-`, `ewr-`, `lon-`, `fra-`, `ams-`, `sg-`, `tyo-` prefixes) are available.
+Set `swqos_only: true` for the cheaper SWQoS-only path. An API key
+(`api_key_env`) is only required for accounts approved for higher TPS limits and
+is sent as the `api-key` query parameter.
+
+Fee floor: every Helius Sender transaction must include both a tip transfer to a
+Helius tip account and a compute-unit priority fee, or it is rejected. Minimum
+tip is 0.001 SOL (Sender-max) or 0.000005 SOL (SWQoS-only). This adapter forwards
+the transaction exactly as generated and does not add a tip; landing tests
+require the operator to fund a qualifying tip and priority fee in the benchmark
+transaction. The provider ACK only confirms accept/reject and ACK latency.
+
+## Astralane Iris
+
+Adapter: `astralane_sender`
+
+Direct submission to the Astralane Iris HTTP endpoint using JSON-RPC
+`sendTransaction`. The `endpoint` is region-specific
+(e.g. `https://fra.gateway.astralane.io/iris`) and the API key (`api_key_env`)
+is sent as the `api-key` query parameter. Set `mev_protect: true` to append the
+`{"mevProtect": true}` options object to the params array; when false the params
+array holds only the transaction and the encoding object.
+
+Fee floor: Astralane requires a tip transfer to
+`astra4uejePWneqNaJKuFFA8oonqCE1sqF6b45kDMZm`, minimum 10,000 lamports. As with
+Helius Sender, this adapter forwards the transaction as generated and does not
+add a tip; landing tests require an operator-funded tip. The provider ACK only
+confirms accept/reject and ACK latency.
+
 ## Adding External Providers
 
 External provider adapters should be added as isolated config variants. Good
