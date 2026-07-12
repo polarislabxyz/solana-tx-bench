@@ -6,7 +6,7 @@ use reqwest::StatusCode;
 use rpcedge_relay_client::{
     QuicRelayClient, QuicRelayClientConfig, RelayRoute, ResponseMode,
     RouteResultResponse as RelayRouteResultResponse, RouteSet as RelayRouteSet,
-    RouteSetMode as RelayRouteSetMode,
+    RouteSetMode as RelayRouteSetMode, SubmitRequest,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -446,31 +446,29 @@ impl ProviderAdapter for RpcedgeRouteAwareAdapter {
     }
 
     async fn send_transaction(&self, _tx: &[u8], ctx: &SendContext) -> ProviderAck {
-        let mode = ctx
+        let selection = ctx
             .route_selection
-            .as_ref()
-            .map(|selection| selection.mode)
-            .unwrap_or(self.route_mode);
-        let routes = ctx
-            .route_selection
-            .as_ref()
-            .map(|selection| selection.routes.clone())
-            .unwrap_or_else(|| self.routes.clone());
-        let route_set = json!({
-            "mode": mode.as_wire(),
-            "routes": routes,
-        });
-        let body = json!({
-            "jsonrpc": "2.0",
-            "id": ctx.iteration,
-            "method": "sendTransaction",
-            "request_id": format!("{}-{}-{}", ctx.test_id, self.name, ctx.iteration),
-            "params": {
-                "transaction": ctx.tx_base64,
-                "encoding": "base64",
-            },
-            "route_set": route_set,
-        });
+            .clone()
+            .unwrap_or_else(|| RouteSelection {
+                policy: "provider_config".to_string(),
+                mode: self.route_mode,
+                routes: self.routes.clone(),
+            });
+        let request = match rpcedge_submit_request(self.name(), ctx, &selection) {
+            Ok(request) => request,
+            Err(err) => {
+                return ack_error(
+                    self.name(),
+                    self.kind(),
+                    Utc::now(),
+                    std::time::Instant::now(),
+                    None,
+                    "invalid_route_selection",
+                    err,
+                )
+            }
+        };
+        let body = serde_json::to_value(request).expect("SubmitRequest serialization");
         send_json(
             &self.client,
             &self.endpoint,
@@ -484,6 +482,19 @@ impl ProviderAdapter for RpcedgeRouteAwareAdapter {
         )
         .await
     }
+}
+
+fn rpcedge_submit_request(
+    provider_name: &str,
+    ctx: &SendContext,
+    selection: &RouteSelection,
+) -> Result<SubmitRequest> {
+    let mut request = SubmitRequest::send_transaction_base64(
+        ctx.tx_base64.clone(),
+        selection.as_relay_route_set()?,
+    );
+    request.request_id = Some(format!("{}-{provider_name}-{}", ctx.test_id, ctx.iteration));
+    Ok(request)
 }
 
 #[async_trait]
@@ -841,4 +852,59 @@ pub fn decode_tx_base64(encoded: &str) -> Result<Vec<u8>> {
     STANDARD
         .decode(encoded)
         .map_err(|err| anyhow!("decode base64 transaction: {err}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wiremock::{
+        matchers::{body_json, header, method, path},
+        Mock, MockServer, ResponseTemplate,
+    };
+
+    #[tokio::test]
+    async fn route_aware_http_posts_the_typed_v1_submit_envelope() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/submit"))
+            .and(header("x-api-key", "benchmark-key"))
+            .and(body_json(json!({
+                "version": 1,
+                "method": "sendTransaction",
+                "request_id": "paired-test-public_internet-7",
+                "route_set": {"mode": "only", "routes": ["tpu_quic"]},
+                "transaction_encoding": "base64",
+                "transaction": "dHJhbnNhY3Rpb24="
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "accepted": true,
+                "request_id": "paired-test-public_internet-7",
+                "signature": "signature"
+            })))
+            .mount(&server)
+            .await;
+        let adapter = RpcedgeRouteAwareAdapter {
+            name: "public_internet".to_string(),
+            endpoint: format!("{}/v1/submit", server.uri()),
+            api_key: Some("benchmark-key".to_string()),
+            route_mode: RouteMode::Only,
+            routes: vec!["tpu_quic".to_string()],
+            headers: HashMap::new(),
+            client: reqwest::Client::new(),
+        };
+        let ctx = SendContext {
+            test_id: "paired-test".to_string(),
+            iteration: 7,
+            signature: "signature".to_string(),
+            tx_base64: "dHJhbnNhY3Rpb24=".to_string(),
+            timeout: Duration::from_secs(1),
+            route_selection: Some(RouteSelection::only("paired_provider_public", ["tpu_quic"])),
+            leader_client_family: None,
+        };
+
+        let ack = adapter.send_transaction(&[], &ctx).await;
+
+        assert!(ack.accepted);
+        assert_eq!(ack.returned_signature.as_deref(), Some("signature"));
+    }
 }

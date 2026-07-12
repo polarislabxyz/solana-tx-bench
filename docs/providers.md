@@ -35,8 +35,24 @@ Optional API key is read from `api_key_env` and sent as `x-api-key`.
 
 Adapter: `rpcedge_route_aware_http`
 
-Sends a JSON body with transaction base64 and route selection. Route selection
-supports:
+Sends the typed RPCEdge v1 submit envelope with transaction base64 and route
+selection:
+
+```json
+{
+  "version": 1,
+  "request_id": "benchmark-provider-iteration",
+  "method": "sendTransaction",
+  "transaction_encoding": "base64",
+  "transaction": "<base64-signed-transaction>",
+  "route_set": {
+    "mode": "only",
+    "routes": ["tpu_quic"]
+  }
+}
+```
+
+Route selection supports:
 
 - `server_default`
 - `only`
