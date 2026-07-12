@@ -87,6 +87,13 @@ impl ProviderConfig {
             _ => Vec::new(),
         }
     }
+
+    pub fn supports_route_selection(&self) -> bool {
+        matches!(
+            self,
+            Self::RpcedgeRouteAwareHttp { .. } | Self::RpcedgeQuicRawTx { .. }
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]

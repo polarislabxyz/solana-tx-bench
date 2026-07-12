@@ -22,8 +22,8 @@ pub use compare::{generate_comparison, CompareOptions, ComparisonOutput};
 pub use config::{BenchConfig, ProviderSpec};
 pub use cost::{priority_fee_lamports, TransactionCost};
 pub use leader_paced::{
-    run_leader_paced, LeaderPacedOptions, LeaderPacedRouteStrategy, LeaderPacedRunOutput,
-    LeaderPacedTrigger, RpcEdgeLeaderCollector,
+    run_leader_paced, LeaderNetworkPathClass, LeaderPacedOptions, LeaderPacedRouteStrategy,
+    LeaderPacedRunOutput, LeaderPacedTrigger, RpcEdgeLeaderCollector,
 };
 pub use leader_slots::{LeaderSlotsCaptureConfig, LeaderSlotsSnapshotArtifact};
 pub use observations::{

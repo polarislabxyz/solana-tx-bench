@@ -2,7 +2,7 @@ use crate::{
     adapters::{build_adapter, ProviderAdapter, RouteSelection, SendContext},
     artifacts::{summarize, ArtifactWriter, BenchManifest, BenchSample, ManifestProvider},
     collectors::{collect_rpcedge_observations, CollectRunOutput, RpcEdgeCollectConfig},
-    config::BenchConfig,
+    config::{BenchConfig, ProviderSpec},
     leader_slots::{
         capture_leader_slots_snapshot, write_leader_slots_snapshot, LeaderSlotsCaptureConfig,
     },
@@ -43,6 +43,7 @@ pub enum LeaderPacedRouteStrategy {
     AlwaysRace,
     SoftwareClientAware,
     PairedRoutePolicies,
+    PairedProviders,
 }
 
 impl LeaderPacedRouteStrategy {
@@ -53,6 +54,7 @@ impl LeaderPacedRouteStrategy {
             Self::AlwaysRace => "always_race",
             Self::SoftwareClientAware => "software_client_aware",
             Self::PairedRoutePolicies => "paired_route_policies",
+            Self::PairedProviders => "paired_providers",
         }
     }
 
@@ -64,7 +66,7 @@ impl LeaderPacedRouteStrategy {
     }
 
     fn is_paired(self) -> bool {
-        matches!(self, Self::PairedRoutePolicies)
+        matches!(self, Self::PairedRoutePolicies | Self::PairedProviders)
     }
 }
 
@@ -72,6 +74,42 @@ impl LeaderPacedRouteStrategy {
 pub enum LeaderPacedTrigger {
     RpcPoll,
     GrpcSlot(GrpcSlotSignalConfig),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LeaderNetworkPathClass {
+    Fra13Local,
+    Doublezero,
+    PublicInternet,
+    Unresolved,
+}
+
+impl LeaderNetworkPathClass {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Fra13Local => "fra13_local",
+            Self::Doublezero => "doublezero",
+            Self::PublicInternet => "public_internet",
+            Self::Unresolved => "unresolved",
+        }
+    }
+}
+
+impl std::str::FromStr for LeaderNetworkPathClass {
+    type Err = String;
+
+    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
+        match value.trim() {
+            "fra13_local" | "fra13-local" => Ok(Self::Fra13Local),
+            "doublezero" | "double_zero" | "double-zero" => Ok(Self::Doublezero),
+            "public_internet" | "public-internet" => Ok(Self::PublicInternet),
+            "unresolved" => Ok(Self::Unresolved),
+            other => Err(format!(
+                "unknown leader network path class `{other}`; expected `fra13_local`, `doublezero`, `public_internet`, or `unresolved`"
+            )),
+        }
+    }
 }
 
 impl LeaderPacedTrigger {
@@ -100,6 +138,7 @@ pub struct LeaderPacedOptions {
     pub extra_observation_accounts: Vec<String>,
     pub resend_attempts: usize,
     pub resend_interval: Duration,
+    pub required_network_path_class: Option<LeaderNetworkPathClass>,
 }
 
 #[derive(Debug, Clone)]
@@ -128,6 +167,10 @@ pub struct LeaderSendEvent {
     pub iteration: usize,
     pub signature: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payer_pubkey: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recent_blockhash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub comparison_group_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub policy_arm: Option<String>,
@@ -146,6 +189,22 @@ pub struct LeaderSendEvent {
     pub leader_software_client: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leader_software_client_id: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leader_network_path_class: Option<LeaderNetworkPathClass>,
+    #[serde(default)]
+    pub leader_network_path_verified: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leader_network_path_observed_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leader_network_path_rtt_us: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leader_stake: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leader_region: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leader_city: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leader_data_center_key: Option<String>,
     pub route_policy: Option<String>,
     pub selected_routes: Vec<String>,
     pub compute_unit_limit: u32,
@@ -153,6 +212,36 @@ pub struct LeaderSendEvent {
     pub base_fee_lamports: u64,
     pub priority_fee_lamports: u64,
     pub transaction_fee_lamports: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LeaderRunDecisionEvent {
+    pub schema_version: u32,
+    pub test_id: String,
+    pub leader_identity: String,
+    pub leader_run_start_slot: u64,
+    pub leader_run_end_slot: u64,
+    pub observed_slot: u64,
+    pub observed_at: DateTime<Utc>,
+    pub eligible: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skip_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_path_class: Option<LeaderNetworkPathClass>,
+    #[serde(default)]
+    pub network_path_verified: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_path_observed_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_path_rtt_us: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stake: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub region: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub city: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_center_key: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -168,6 +257,7 @@ struct PolicyArm {
     policy_arm: Option<String>,
     policy_arm_index: Option<u16>,
     route_selection: Option<RouteSelection>,
+    provider_index: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -178,6 +268,9 @@ struct PendingLeaderTx {
     policy_arm: Option<String>,
     policy_arm_index: Option<u16>,
     route_selection: Option<RouteSelection>,
+    provider_index: Option<usize>,
+    payer_pubkey: String,
+    recent_blockhash: String,
     leader_metadata: LeaderMetadata,
     compute_unit_limit: u32,
     compute_unit_price_microlamports: u64,
@@ -208,16 +301,23 @@ pub async fn run_leader_paced(
             options.route_strategy.as_str()
         );
     }
+    if options.required_network_path_class.is_some() && options.leader_slots.is_none() {
+        bail!("--leader-network-path-class requires --capture-leader-slots");
+    }
+    if options.route_strategy == LeaderPacedRouteStrategy::PairedProviders {
+        validate_paired_providers(&config.providers)?;
+    }
+    validate_payer_config(options.route_strategy, &config)?;
 
     let test_id = config
         .test_id
         .clone()
         .unwrap_or_else(default_leader_paced_test_id);
-    let keypair_path = config
-        .keypair_path
-        .as_ref()
-        .context("keypair_path is required for transaction generation")?;
-    let payer = load_keypair(keypair_path)?;
+    let payers = load_payers(options.route_strategy, &config)?;
+    let payer_pubkeys = payers
+        .iter()
+        .map(|payer| payer.pubkey().to_string())
+        .collect::<Vec<_>>();
     let memo_prefix = config
         .memo_prefix
         .clone()
@@ -263,11 +363,16 @@ pub async fn run_leader_paced(
         File::create(&leader_sends_path)
             .with_context(|| format!("create {}", leader_sends_path.display()))?,
     );
+    let leader_runs_path = writer.run_dir.join("leader-runs.ndjson");
+    let mut leader_runs = BufWriter::new(
+        File::create(&leader_runs_path)
+            .with_context(|| format!("create {}", leader_runs_path.display()))?,
+    );
 
     let collector_handle = options.rpcedge.clone().map(|rpcedge| {
         let output_dir = writer.run_dir.join("rpcedge-observations");
         let duration = options.duration + options.observe_extra;
-        let mut account_include = vec![payer.pubkey().to_string()];
+        let mut account_include = payer_pubkeys.clone();
         add_default_provider_observation_accounts(&mut account_include);
         account_include.extend(options.extra_observation_accounts.iter().cloned());
         account_include.sort();
@@ -286,7 +391,7 @@ pub async fn run_leader_paced(
     });
 
     let deadline = Instant::now() + options.duration;
-    let mut sent_runs = HashSet::<(String, u64)>::new();
+    let mut evaluated_runs = HashSet::<(String, u64)>::new();
     let mut samples = Vec::<BenchSample>::new();
     let mut sends = Vec::<LeaderSendEvent>::new();
     let mut transaction_fee_spent = 0_u64;
@@ -330,148 +435,222 @@ pub async fn run_leader_paced(
             })?,
         };
         let run_key = (leader_run.leader_identity.clone(), leader_run.start_slot);
-        if sent_runs.insert(run_key) {
+        if evaluated_runs.insert(run_key) {
             let leader_metadata =
                 leader_lookup.lookup(send_slot, leader_run.leader_identity.as_str());
-            let blockhash = rpc.get_latest_blockhash().context("get latest blockhash")?;
-            let mut pending = Vec::new();
-            for group_index in 0..options.txs_per_leader_run {
-                let comparison_group_id =
-                    comparison_group_id_for(&test_id, &leader_run, send_slot, group_index);
-                let mut arms = policy_arms_for_strategy(
-                    options.route_strategy,
-                    &leader_metadata,
-                    comparison_group_id,
-                );
-                rotate_policy_arms(&mut arms, leader_run.start_slot, group_index);
+            let eligible = options
+                .required_network_path_class
+                .map(|required| leader_matches_network_path(&leader_metadata, required))
+                .unwrap_or(true);
+            let decision = LeaderRunDecisionEvent {
+                schema_version: 1,
+                test_id: test_id.clone(),
+                leader_identity: leader_run.leader_identity.clone(),
+                leader_run_start_slot: leader_run.start_slot,
+                leader_run_end_slot: leader_run.end_slot,
+                observed_slot: send_slot,
+                observed_at: slot_signal.observed_at,
+                eligible,
+                skip_reason: options.required_network_path_class.and_then(|required| {
+                    (!eligible).then(|| leader_network_path_skip_reason(&leader_metadata, required))
+                }),
+                network_path_class: leader_metadata.network_path_class,
+                network_path_verified: leader_metadata.network_path_verified,
+                network_path_observed_at_unix_ms: leader_metadata.network_path_observed_at_unix_ms,
+                network_path_rtt_us: leader_metadata.network_path_rtt_us,
+                stake: leader_metadata.stake,
+                region: leader_metadata.region.clone(),
+                city: leader_metadata.city.clone(),
+                data_center_key: leader_metadata.data_center_key.clone(),
+            };
+            serde_json::to_writer(&mut leader_runs, &decision)
+                .context("write leader run decision")?;
+            leader_runs
+                .write_all(b"\n")
+                .context("write leader run decision newline")?;
+            leader_runs.flush().context("flush leader run decisions")?;
 
-                for arm in arms {
-                    let compute_unit_price_microlamports = compute_unit_price_for_selection(
-                        &config,
-                        &options,
-                        arm.route_selection.as_ref(),
-                    );
-                    let tx_config = TxBuildConfig {
-                        rpc_url: config.rpc_url.clone(),
-                        lamports: config.lamports,
-                        compute_unit_limit: config.compute_unit_limit,
-                        compute_unit_price_microlamports,
-                    };
-                    let next_transaction_fee_total =
-                        transaction_fee_spent.saturating_add(transaction_fee_lamports(&tx_config));
-                    if let Some(max) = config.max_spend_lamports {
-                        if next_transaction_fee_total > max {
-                            bail!(
+            if eligible {
+                let blockhash = rpc.get_latest_blockhash().context("get latest blockhash")?;
+                let mut pending = Vec::new();
+                for group_index in 0..options.txs_per_leader_run {
+                    let comparison_group_id =
+                        comparison_group_id_for(&test_id, &leader_run, send_slot, group_index);
+                    let mut arms =
+                        if options.route_strategy == LeaderPacedRouteStrategy::PairedProviders {
+                            paired_provider_arms(&config.providers, comparison_group_id)?
+                        } else {
+                            policy_arms_for_strategy(
+                                options.route_strategy,
+                                &leader_metadata,
+                                comparison_group_id,
+                            )
+                        };
+                    rotate_policy_arms(&mut arms, leader_run.start_slot, group_index);
+
+                    for arm in arms {
+                        let payer_index = if options.route_strategy
+                            == LeaderPacedRouteStrategy::PairedProviders
+                        {
+                            paired_payer_index(
+                                arm.policy_arm_index.context(
+                                    "paired provider arm missing stable policy arm index",
+                                )? as usize,
+                                leader_run.start_slot,
+                            )
+                        } else {
+                            0
+                        };
+                        let payer = payers
+                            .get(payer_index)
+                            .context("paired provider payer index out of bounds")?;
+                        let compute_unit_price_microlamports = compute_unit_price_for_selection(
+                            &config,
+                            &options,
+                            arm.route_selection.as_ref(),
+                        );
+                        let tx_config = TxBuildConfig {
+                            rpc_url: config.rpc_url.clone(),
+                            lamports: config.lamports,
+                            compute_unit_limit: config.compute_unit_limit,
+                            compute_unit_price_microlamports,
+                        };
+                        let next_transaction_fee_total = transaction_fee_spent
+                            .saturating_add(transaction_fee_lamports(&tx_config));
+                        if let Some(max) = config.max_spend_lamports {
+                            if next_transaction_fee_total > max {
+                                bail!(
                                 "spend cap exceeded before tx {iteration}: next_transaction_fee_total={} max={max}",
                                 next_transaction_fee_total
                             );
+                            }
                         }
-                    }
 
-                    let tx =
-                        build_transaction_with_blockhash(&tx_config, &payer, iteration, blockhash)?;
-                    transaction_fee_spent =
-                        transaction_fee_spent.saturating_add(tx.transaction_fee_lamports);
-                    pending.push(PendingLeaderTx {
-                        tx,
-                        iteration,
-                        comparison_group_id: arm.comparison_group_id,
-                        policy_arm: arm.policy_arm,
-                        policy_arm_index: arm.policy_arm_index,
-                        route_selection: arm.route_selection,
-                        leader_metadata: leader_metadata.clone(),
-                        compute_unit_limit: tx_config.compute_unit_limit,
-                        compute_unit_price_microlamports,
-                    });
-                    iteration += 1;
+                        let tx = build_transaction_with_blockhash(
+                            &tx_config, payer, iteration, blockhash,
+                        )?;
+                        transaction_fee_spent =
+                            transaction_fee_spent.saturating_add(tx.transaction_fee_lamports);
+                        pending.push(PendingLeaderTx {
+                            tx,
+                            iteration,
+                            comparison_group_id: arm.comparison_group_id,
+                            policy_arm: arm.policy_arm,
+                            policy_arm_index: arm.policy_arm_index,
+                            route_selection: arm.route_selection,
+                            provider_index: arm.provider_index,
+                            payer_pubkey: payer.pubkey().to_string(),
+                            recent_blockhash: blockhash.to_string(),
+                            leader_metadata: leader_metadata.clone(),
+                            compute_unit_limit: tx_config.compute_unit_limit,
+                            compute_unit_price_microlamports,
+                        });
+                        iteration += 1;
+                    }
                 }
-            }
 
-            let send_batch_at = Utc::now();
-            for pending_tx in &pending {
-                let event = LeaderSendEvent {
-                    schema_version: 3,
-                    test_id: test_id.clone(),
-                    iteration: pending_tx.iteration,
-                    signature: pending_tx.tx.signature.to_string(),
-                    comparison_group_id: pending_tx.comparison_group_id.clone(),
-                    policy_arm: pending_tx.policy_arm.clone(),
-                    policy_arm_index: pending_tx.policy_arm_index,
-                    leader_identity: leader_run.leader_identity.clone(),
-                    leader_run_start_slot: leader_run.start_slot,
-                    leader_run_end_slot: leader_run.end_slot,
-                    send_slot,
-                    sent_at: send_batch_at,
-                    trigger_source: trigger_source.clone(),
-                    slot_signal_status: Some(slot_signal.status.clone()),
-                    slot_signal_observed_at: Some(slot_signal.observed_at),
-                    leader_client_family: pending_tx.leader_metadata.client_family.clone(),
-                    leader_software_client: pending_tx.leader_metadata.software_client.clone(),
-                    leader_software_client_id: pending_tx.leader_metadata.software_client_id,
-                    route_policy: pending_tx
-                        .route_selection
-                        .as_ref()
-                        .map(|selection| selection.policy.clone()),
-                    selected_routes: pending_tx
-                        .route_selection
-                        .as_ref()
-                        .map(|selection| selection.routes.clone())
-                        .unwrap_or_default(),
-                    compute_unit_limit: pending_tx.compute_unit_limit,
-                    compute_unit_price_microlamports: pending_tx.compute_unit_price_microlamports,
-                    base_fee_lamports: pending_tx.tx.base_fee_lamports,
-                    priority_fee_lamports: pending_tx.tx.priority_fee_lamports,
-                    transaction_fee_lamports: pending_tx.tx.transaction_fee_lamports,
+                let send_batch_at = Utc::now();
+                for pending_tx in &pending {
+                    let event = LeaderSendEvent {
+                        schema_version: 4,
+                        test_id: test_id.clone(),
+                        iteration: pending_tx.iteration,
+                        signature: pending_tx.tx.signature.to_string(),
+                        payer_pubkey: Some(pending_tx.payer_pubkey.clone()),
+                        recent_blockhash: Some(pending_tx.recent_blockhash.clone()),
+                        comparison_group_id: pending_tx.comparison_group_id.clone(),
+                        policy_arm: pending_tx.policy_arm.clone(),
+                        policy_arm_index: pending_tx.policy_arm_index,
+                        leader_identity: leader_run.leader_identity.clone(),
+                        leader_run_start_slot: leader_run.start_slot,
+                        leader_run_end_slot: leader_run.end_slot,
+                        send_slot,
+                        sent_at: send_batch_at,
+                        trigger_source: trigger_source.clone(),
+                        slot_signal_status: Some(slot_signal.status.clone()),
+                        slot_signal_observed_at: Some(slot_signal.observed_at),
+                        leader_client_family: pending_tx.leader_metadata.client_family.clone(),
+                        leader_software_client: pending_tx.leader_metadata.software_client.clone(),
+                        leader_software_client_id: pending_tx.leader_metadata.software_client_id,
+                        leader_network_path_class: pending_tx.leader_metadata.network_path_class,
+                        leader_network_path_verified: pending_tx
+                            .leader_metadata
+                            .network_path_verified,
+                        leader_network_path_observed_at_unix_ms: pending_tx
+                            .leader_metadata
+                            .network_path_observed_at_unix_ms,
+                        leader_network_path_rtt_us: pending_tx.leader_metadata.network_path_rtt_us,
+                        leader_stake: pending_tx.leader_metadata.stake,
+                        leader_region: pending_tx.leader_metadata.region.clone(),
+                        leader_city: pending_tx.leader_metadata.city.clone(),
+                        leader_data_center_key: pending_tx.leader_metadata.data_center_key.clone(),
+                        route_policy: pending_tx
+                            .route_selection
+                            .as_ref()
+                            .map(|selection| selection.policy.clone()),
+                        selected_routes: pending_tx
+                            .route_selection
+                            .as_ref()
+                            .map(|selection| selection.routes.clone())
+                            .unwrap_or_default(),
+                        compute_unit_limit: pending_tx.compute_unit_limit,
+                        compute_unit_price_microlamports: pending_tx
+                            .compute_unit_price_microlamports,
+                        base_fee_lamports: pending_tx.tx.base_fee_lamports,
+                        priority_fee_lamports: pending_tx.tx.priority_fee_lamports,
+                        transaction_fee_lamports: pending_tx.tx.transaction_fee_lamports,
+                    };
+                    serde_json::to_writer(&mut leader_sends, &event)
+                        .context("write leader send event")?;
+                    leader_sends
+                        .write_all(b"\n")
+                        .context("write leader send newline")?;
+                    sends.push(event);
+                }
+                leader_sends.flush().context("flush leader send events")?;
+
+                let chunk_size = if options.route_strategy.is_paired() {
+                    pending.len().max(1)
+                } else {
+                    options.leader_run_concurrency
                 };
-                serde_json::to_writer(&mut leader_sends, &event)
-                    .context("write leader send event")?;
-                leader_sends
-                    .write_all(b"\n")
-                    .context("write leader send newline")?;
-                sends.push(event);
-            }
-            leader_sends.flush().context("flush leader send events")?;
-
-            let chunk_size = if options.route_strategy.is_paired() {
-                pending.len().max(1)
-            } else {
-                options.leader_run_concurrency
-            };
-            for chunk in pending.chunks(chunk_size) {
-                for resend_attempt_index in 0..options.resend_attempts {
-                    let futures = chunk.iter().map(|pending_tx| {
-                        send_one_transaction_to_providers(
-                            providers.as_slice(),
-                            test_id.as_str(),
-                            &pending_tx.tx,
-                            send_batch_at,
-                            pending_tx.iteration,
-                            timeout,
-                            pending_tx.route_selection.clone(),
-                            pending_tx.leader_metadata.clone(),
-                            pending_tx.comparison_group_id.clone(),
-                            pending_tx.policy_arm.clone(),
-                            pending_tx.policy_arm_index,
-                            pending_tx.compute_unit_limit,
-                            pending_tx.compute_unit_price_microlamports,
-                            pending_tx.tx.base_fee_lamports,
-                            pending_tx.tx.priority_fee_lamports,
-                            pending_tx.tx.transaction_fee_lamports,
-                            resend_attempt_index,
-                            options.resend_attempts,
-                            options.resend_interval,
-                        )
-                    });
-                    for tx_samples in join_all(futures).await {
-                        for sample in tx_samples {
-                            writer.write_sample(&sample)?;
-                            samples.push(sample);
+                for chunk in pending.chunks(chunk_size) {
+                    for resend_attempt_index in 0..options.resend_attempts {
+                        let futures = chunk.iter().map(|pending_tx| {
+                            send_one_transaction_to_providers(
+                                providers.as_slice(),
+                                test_id.as_str(),
+                                &pending_tx.tx,
+                                send_batch_at,
+                                pending_tx.iteration,
+                                timeout,
+                                pending_tx.route_selection.clone(),
+                                pending_tx.provider_index,
+                                pending_tx.leader_metadata.clone(),
+                                pending_tx.comparison_group_id.clone(),
+                                pending_tx.policy_arm.clone(),
+                                pending_tx.policy_arm_index,
+                                pending_tx.compute_unit_limit,
+                                pending_tx.compute_unit_price_microlamports,
+                                pending_tx.tx.base_fee_lamports,
+                                pending_tx.tx.priority_fee_lamports,
+                                pending_tx.tx.transaction_fee_lamports,
+                                resend_attempt_index,
+                                options.resend_attempts,
+                                options.resend_interval,
+                            )
+                        });
+                        for tx_samples in join_all(futures).await {
+                            for sample in tx_samples {
+                                writer.write_sample(&sample)?;
+                                samples.push(sample);
+                            }
                         }
-                    }
-                    if resend_attempt_index + 1 < options.resend_attempts
-                        && !options.resend_interval.is_zero()
-                    {
-                        tokio::time::sleep(options.resend_interval).await;
+                        if resend_attempt_index + 1 < options.resend_attempts
+                            && !options.resend_interval.is_zero()
+                        {
+                            tokio::time::sleep(options.resend_interval).await;
+                        }
                     }
                 }
             }
@@ -482,6 +661,7 @@ pub async fn run_leader_paced(
     }
 
     leader_sends.flush().context("flush leader sends")?;
+    leader_runs.flush().context("flush leader run decisions")?;
 
     let collector = if let Some(handle) = collector_handle {
         Some(handle.await.context("join RPCEdge collector")??)
@@ -508,11 +688,12 @@ pub async fn run_leader_paced(
     };
 
     let manifest = BenchManifest {
-        schema_version: 2,
+        schema_version: 3,
         test_id: test_id.clone(),
         generated_at: Utc::now(),
         rpc_url_label: redact_url(&config.rpc_url),
-        keypair_pubkey: payer.pubkey().to_string(),
+        keypair_pubkey: payer_pubkeys.first().cloned().unwrap_or_default(),
+        keypair_pubkeys: payer_pubkeys,
         count: sends.len(),
         duration_seconds: Some(options.duration.as_secs()),
         rate_per_second: None,
@@ -522,6 +703,9 @@ pub async fn run_leader_paced(
         memo_prefix,
         max_spend_lamports: config.max_spend_lamports,
         route_strategy: Some(options.route_strategy.as_str().to_string()),
+        leader_network_path_class: options
+            .required_network_path_class
+            .map(|class| class.as_str().to_string()),
         client_aware_harmonic_cu_price_microlamports: Some(harmonic_min_cu_price_microlamports(
             &options,
         )),
@@ -600,6 +784,7 @@ async fn send_one_transaction_to_providers(
     iteration: usize,
     timeout: Duration,
     route_selection: Option<RouteSelection>,
+    provider_index: Option<usize>,
     leader_metadata: LeaderMetadata,
     comparison_group_id: Option<String>,
     policy_arm: Option<String>,
@@ -623,8 +808,12 @@ async fn send_one_transaction_to_providers(
         route_selection: route_selection.clone(),
         leader_client_family: leader_metadata.client_family.clone(),
     };
-    let futures = providers
-        .iter()
+    let selected_providers = match provider_index {
+        Some(index) => providers.get(index).into_iter().collect::<Vec<_>>(),
+        None => providers.iter().collect::<Vec<_>>(),
+    };
+    let futures = selected_providers
+        .into_iter()
         .map(|provider| provider.send_transaction(&tx.raw, &ctx));
     let acks = join_all(futures).await;
     let client_finished_at = Utc::now();
@@ -664,6 +853,14 @@ struct LeaderMetadata {
     client_family: Option<String>,
     software_client: Option<String>,
     software_client_id: Option<u16>,
+    network_path_class: Option<LeaderNetworkPathClass>,
+    network_path_verified: bool,
+    network_path_observed_at_unix_ms: Option<u64>,
+    network_path_rtt_us: Option<u64>,
+    stake: Option<u64>,
+    region: Option<String>,
+    city: Option<String>,
+    data_center_key: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -723,10 +920,49 @@ impl LeaderMetadataLookup {
                 .and_then(|client| client.get("softwareClientId"))
                 .and_then(Value::as_u64)
                 .and_then(|value| u16::try_from(value).ok());
+            let network_path = row.get("networkPath");
+            let network_path_class = network_path
+                .and_then(|path| path.get("class"))
+                .and_then(Value::as_str)
+                .and_then(|value| value.parse().ok());
+            let network_path_verified = network_path
+                .and_then(|path| path.get("verified"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let network_path_observed_at_unix_ms = network_path
+                .and_then(|path| path.get("observedAtUnixMs"))
+                .and_then(Value::as_u64);
+            let network_path_rtt_us = network_path
+                .and_then(|path| path.get("rttUs"))
+                .and_then(Value::as_u64);
+            let stake = row.get("stake").and_then(Value::as_u64);
+            let region = row
+                .get("location")
+                .and_then(|location| location.get("region"))
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned);
+            let city = row
+                .get("location")
+                .and_then(|location| location.get("city"))
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned);
+            let data_center_key = row
+                .get("location")
+                .and_then(|location| location.get("dataCenterKey"))
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned);
             let metadata = LeaderMetadata {
                 client_family,
                 software_client,
                 software_client_id,
+                network_path_class,
+                network_path_verified,
+                network_path_observed_at_unix_ms,
+                network_path_rtt_us,
+                stake,
+                region,
+                city,
+                data_center_key,
             };
             if let Some(identity) = identity {
                 self.by_slot.insert(
@@ -794,6 +1030,28 @@ impl LeaderMetadataLookup {
     }
 }
 
+fn leader_matches_network_path(
+    metadata: &LeaderMetadata,
+    required: LeaderNetworkPathClass,
+) -> bool {
+    metadata.network_path_verified && metadata.network_path_class == Some(required)
+}
+
+fn leader_network_path_skip_reason(
+    metadata: &LeaderMetadata,
+    required: LeaderNetworkPathClass,
+) -> String {
+    match metadata.network_path_class {
+        None => "network_path_missing".to_string(),
+        Some(_) if !metadata.network_path_verified => "network_path_unverified".to_string(),
+        Some(actual) => format!(
+            "network_path_class_mismatch_required_{}_actual_{}",
+            required.as_str(),
+            actual.as_str()
+        ),
+    }
+}
+
 fn normalize_client_family(value: &str) -> String {
     let normalized = value.trim().to_ascii_lowercase();
     if normalized.contains("jito") {
@@ -853,6 +1111,7 @@ fn route_selection_for_strategy(
             Some(RouteSelection::only(policy, routes))
         }
         LeaderPacedRouteStrategy::PairedRoutePolicies => None,
+        LeaderPacedRouteStrategy::PairedProviders => None,
     }
 }
 
@@ -868,6 +1127,7 @@ fn policy_arms_for_strategy(
                 policy_arm: Some("tpu_quic_only".to_string()),
                 policy_arm_index: Some(0),
                 route_selection: Some(RouteSelection::only("tpu_quic_only", ["tpu_quic"])),
+                provider_index: None,
             },
             PolicyArm {
                 comparison_group_id: comparison_group_id.clone(),
@@ -877,6 +1137,7 @@ fn policy_arms_for_strategy(
                     LeaderPacedRouteStrategy::AlwaysRace,
                     leader_metadata,
                 ),
+                provider_index: None,
             },
             PolicyArm {
                 comparison_group_id,
@@ -886,6 +1147,7 @@ fn policy_arms_for_strategy(
                     LeaderPacedRouteStrategy::SoftwareClientAware,
                     leader_metadata,
                 ),
+                provider_index: None,
             },
         ];
     }
@@ -895,7 +1157,94 @@ fn policy_arms_for_strategy(
         policy_arm: None,
         policy_arm_index: None,
         route_selection: route_selection_for_strategy(strategy, leader_metadata),
+        provider_index: None,
     }]
+}
+
+fn validate_paired_providers(providers: &[ProviderSpec]) -> Result<()> {
+    if providers.len() != 2 {
+        bail!(
+            "paired_providers requires exactly two providers, got {}",
+            providers.len()
+        );
+    }
+    if providers[0].name == providers[1].name {
+        bail!("paired_providers requires unique provider names");
+    }
+    for provider in providers {
+        if provider.name.trim().is_empty() {
+            bail!("paired_providers requires non-empty provider names");
+        }
+        if !provider.config.supports_route_selection() {
+            bail!(
+                "paired_providers provider {} does not support per-transaction route selection",
+                provider.name
+            );
+        }
+    }
+    Ok(())
+}
+
+fn paired_provider_arms(
+    providers: &[ProviderSpec],
+    comparison_group_id: Option<String>,
+) -> Result<Vec<PolicyArm>> {
+    validate_paired_providers(providers)?;
+    providers
+        .iter()
+        .enumerate()
+        .map(|(index, provider)| {
+            Ok(PolicyArm {
+                comparison_group_id: comparison_group_id.clone(),
+                policy_arm: Some(provider.name.clone()),
+                policy_arm_index: Some(index as u16),
+                route_selection: Some(RouteSelection::only(
+                    format!("paired_provider_{}", provider.name),
+                    ["tpu_quic"],
+                )),
+                provider_index: Some(index),
+            })
+        })
+        .collect()
+}
+
+fn validate_payer_config(strategy: LeaderPacedRouteStrategy, config: &BenchConfig) -> Result<()> {
+    if strategy == LeaderPacedRouteStrategy::PairedProviders
+        && config.paired_payer_keypair_paths.len() != 2
+    {
+        bail!(
+            "paired_providers requires exactly two paired_payer_keypair_paths, got {}",
+            config.paired_payer_keypair_paths.len()
+        );
+    }
+    Ok(())
+}
+
+fn load_payers(
+    strategy: LeaderPacedRouteStrategy,
+    config: &BenchConfig,
+) -> Result<Vec<solana_sdk::signature::Keypair>> {
+    if strategy == LeaderPacedRouteStrategy::PairedProviders {
+        let payers = config
+            .paired_payer_keypair_paths
+            .iter()
+            .map(|path| load_keypair(path))
+            .collect::<Result<Vec<_>>>()?;
+        if payers[0].pubkey() == payers[1].pubkey() {
+            bail!("paired_providers requires two distinct payer keypairs");
+        }
+        return Ok(payers);
+    }
+
+    let keypair_path = config
+        .keypair_path
+        .as_ref()
+        .context("keypair_path is required for transaction generation")?;
+    Ok(vec![load_keypair(keypair_path)?])
+}
+
+fn paired_payer_index(policy_arm_index: usize, leader_run_start_slot: u64) -> usize {
+    (policy_arm_index + leader_run_start_slot as usize) % 2
 }
 
 fn rotate_policy_arms(arms: &mut [PolicyArm], leader_run_start_slot: u64, group_index: usize) {
@@ -1272,7 +1621,114 @@ fn redact_url(url: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        adapters::{ProviderConfig, RouteMode},
+        config::ProviderSpec,
+    };
     use serde_json::json;
+    use std::collections::HashMap;
+
+    fn route_aware_provider(name: &str) -> ProviderSpec {
+        ProviderSpec {
+            name: name.to_string(),
+            config: ProviderConfig::RpcedgeRouteAwareHttp {
+                endpoint: format!("http://127.0.0.1/{name}"),
+                api_key_env: None,
+                route_mode: RouteMode::Only,
+                routes: vec!["tpu_quic".to_string()],
+                headers: HashMap::new(),
+            },
+        }
+    }
+
+    #[test]
+    fn paired_provider_arms_target_one_tpu_only_provider_each() {
+        let providers = vec![
+            route_aware_provider("public_internet"),
+            route_aware_provider("doublezero"),
+        ];
+
+        let arms = paired_provider_arms(&providers, Some("group-1".to_string()))
+            .expect("paired provider arms");
+
+        assert_eq!(arms.len(), 2);
+        assert_eq!(arms[0].policy_arm.as_deref(), Some("public_internet"));
+        assert_eq!(arms[0].policy_arm_index, Some(0));
+        assert_eq!(arms[0].provider_index, Some(0));
+        assert_eq!(arms[1].policy_arm.as_deref(), Some("doublezero"));
+        assert_eq!(arms[1].policy_arm_index, Some(1));
+        assert_eq!(arms[1].provider_index, Some(1));
+        assert!(arms
+            .iter()
+            .all(|arm| arm.comparison_group_id.as_deref() == Some("group-1")));
+        assert!(arms.iter().all(|arm| {
+            let selection = arm.route_selection.as_ref().expect("route selection");
+            selection.mode == RouteMode::Only && selection.routes == vec!["tpu_quic"]
+        }));
+    }
+
+    #[test]
+    fn paired_provider_validation_fails_closed() {
+        let one = vec![route_aware_provider("public_internet")];
+        assert!(paired_provider_arms(&one, Some("group".to_string())).is_err());
+
+        let duplicate = vec![route_aware_provider("same"), route_aware_provider("same")];
+        assert!(paired_provider_arms(&duplicate, Some("group".to_string())).is_err());
+
+        let blank = vec![
+            route_aware_provider("public_internet"),
+            route_aware_provider(" "),
+        ];
+        assert!(paired_provider_arms(&blank, Some("group".to_string())).is_err());
+
+        let incapable = vec![
+            route_aware_provider("public_internet"),
+            ProviderSpec {
+                name: "doublezero".to_string(),
+                config: ProviderConfig::SolanaRpc {
+                    endpoint: "http://127.0.0.1:8899".to_string(),
+                    headers: HashMap::new(),
+                },
+            },
+        ];
+        assert!(paired_provider_arms(&incapable, Some("group".to_string())).is_err());
+
+        let three = vec![
+            route_aware_provider("a"),
+            route_aware_provider("b"),
+            route_aware_provider("c"),
+        ];
+        assert!(paired_provider_arms(&three, Some("group".to_string())).is_err());
+    }
+
+    #[test]
+    fn paired_payer_assignment_rotates_by_leader_run() {
+        assert_eq!(paired_payer_index(0, 100), 0);
+        assert_eq!(paired_payer_index(1, 100), 1);
+        assert_eq!(paired_payer_index(0, 101), 1);
+        assert_eq!(paired_payer_index(1, 101), 0);
+    }
+
+    #[test]
+    fn paired_payer_validation_requires_exactly_two_paths_only_for_paired_providers() {
+        let mut config = BenchConfig::default();
+        assert!(validate_payer_config(LeaderPacedRouteStrategy::PairedProviders, &config).is_err());
+
+        config.paired_payer_keypair_paths = vec![PathBuf::from("payer-a.json")];
+        assert!(validate_payer_config(LeaderPacedRouteStrategy::PairedProviders, &config).is_err());
+
+        config
+            .paired_payer_keypair_paths
+            .push(PathBuf::from("payer-b.json"));
+        assert!(validate_payer_config(LeaderPacedRouteStrategy::PairedProviders, &config).is_ok());
+
+        config
+            .paired_payer_keypair_paths
+            .push(PathBuf::from("payer-c.json"));
+        assert!(validate_payer_config(LeaderPacedRouteStrategy::PairedProviders, &config).is_err());
+
+        assert!(validate_payer_config(LeaderPacedRouteStrategy::Static, &config).is_ok());
+    }
 
     #[test]
     fn client_aware_routes_jito_leaders_to_tpu_and_jito_bundle() {
@@ -1333,6 +1789,7 @@ mod tests {
             client_family: Some("bam".to_string()),
             software_client: Some("AgaveBam".to_string()),
             software_client_id: Some(6),
+            ..LeaderMetadata::default()
         };
         let selection =
             route_selection_for_strategy(LeaderPacedRouteStrategy::SoftwareClientAware, &metadata)
@@ -1347,6 +1804,7 @@ mod tests {
             client_family: Some("harmonic".to_string()),
             software_client: Some("HarmonicAgave".to_string()),
             software_client_id: Some(10),
+            ..LeaderMetadata::default()
         };
         let selection =
             route_selection_for_strategy(LeaderPacedRouteStrategy::SoftwareClientAware, &metadata)
@@ -1361,6 +1819,7 @@ mod tests {
             client_family: Some("rakurai".to_string()),
             software_client: Some("Rakurai".to_string()),
             software_client_id: Some(8),
+            ..LeaderMetadata::default()
         };
         let selection =
             route_selection_for_strategy(LeaderPacedRouteStrategy::SoftwareClientAware, &metadata)
@@ -1378,6 +1837,7 @@ mod tests {
             client_family: Some("raiku".to_string()),
             software_client: Some("Raiku".to_string()),
             software_client_id: None,
+            ..LeaderMetadata::default()
         };
         let selection =
             route_selection_for_strategy(LeaderPacedRouteStrategy::SoftwareClientAware, &metadata)
@@ -1395,6 +1855,7 @@ mod tests {
             client_family: Some("agave".to_string()),
             software_client: Some("Agave".to_string()),
             software_client_id: Some(3),
+            ..LeaderMetadata::default()
         };
         let selection =
             route_selection_for_strategy(LeaderPacedRouteStrategy::SoftwareClientAware, &metadata)
@@ -1409,6 +1870,7 @@ mod tests {
             client_family: Some("bam".to_string()),
             software_client: Some("AgaveBam".to_string()),
             software_client_id: Some(6),
+            ..LeaderMetadata::default()
         };
         let arms = policy_arms_for_strategy(
             LeaderPacedRouteStrategy::PairedRoutePolicies,
@@ -1451,6 +1913,7 @@ mod tests {
             client_family: Some("agave".to_string()),
             software_client: Some("Agave".to_string()),
             software_client_id: Some(3),
+            ..LeaderMetadata::default()
         };
         let arms = policy_arms_for_strategy(
             LeaderPacedRouteStrategy::PairedRoutePolicies,
@@ -1472,6 +1935,7 @@ mod tests {
             client_family: Some("rakurai".to_string()),
             software_client: Some("Rakurai".to_string()),
             software_client_id: Some(8),
+            ..LeaderMetadata::default()
         };
         let arms = policy_arms_for_strategy(
             LeaderPacedRouteStrategy::PairedRoutePolicies,
@@ -1512,6 +1976,7 @@ mod tests {
             extra_observation_accounts: Vec::new(),
             resend_attempts: 1,
             resend_interval: Duration::from_millis(0),
+            required_network_path_class: None,
         };
         let selection = RouteSelection::only("always_race", ["tpu_quic", "harmonic_bundle"]);
         assert_eq!(
@@ -1583,5 +2048,86 @@ mod tests {
             lookup.lookup(11, "leader-a").client_family.as_deref(),
             Some("jito")
         );
+    }
+
+    fn network_path_artifact(
+        class: Option<&str>,
+        verified: Option<bool>,
+    ) -> crate::leader_slots::LeaderSlotsSnapshotArtifact {
+        let network_path = match (class, verified) {
+            (Some(class), Some(verified)) => json!({
+                "class": class,
+                "verified": verified,
+                "observedAtUnixMs": 1_234,
+                "rttUs": 850,
+                "latencySource": "quic_handshake"
+            }),
+            _ => Value::Null,
+        };
+        crate::leader_slots::LeaderSlotsSnapshotArtifact {
+            schema_version: 1,
+            fetched_at: Utc::now(),
+            rpc_url_label: "https://rpc.rpcedge.com/".to_string(),
+            start_slot: 20,
+            limit: 1,
+            response: json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "success": true,
+                    "data": [{
+                        "slot": 20,
+                        "identity": "leader-dz",
+                        "stake": 99,
+                        "location": {
+                            "region": "us-east",
+                            "city": "New York",
+                            "dataCenterKey": "us-east-1"
+                        },
+                        "networkPath": network_path,
+                        "doublezeroEdge": {
+                            "publicationStatus": "missing",
+                            "leaderPublisher": false,
+                            "observedLeaderSlots": 0
+                        }
+                    }]
+                }
+            }),
+        }
+    }
+
+    #[test]
+    fn leader_network_path_accepts_only_verified_doublezero() {
+        let artifact = network_path_artifact(Some("doublezero"), Some(true));
+        let metadata = LeaderMetadataLookup::from_artifact(&artifact).lookup(20, "leader-dz");
+
+        assert!(leader_matches_network_path(
+            &metadata,
+            LeaderNetworkPathClass::Doublezero
+        ));
+        assert_eq!(metadata.network_path_observed_at_unix_ms, Some(1_234));
+        assert_eq!(metadata.network_path_rtt_us, Some(850));
+        assert_eq!(metadata.stake, Some(99));
+        assert_eq!(metadata.region.as_deref(), Some("us-east"));
+        assert_eq!(metadata.city.as_deref(), Some("New York"));
+        assert_eq!(metadata.data_center_key.as_deref(), Some("us-east-1"));
+    }
+
+    #[test]
+    fn leader_network_path_rejects_missing_unverified_and_other_classes() {
+        for (class, verified) in [
+            (Some("doublezero"), Some(false)),
+            (Some("public_internet"), Some(true)),
+            (Some("fra13_local"), Some(true)),
+            (Some("unresolved"), Some(false)),
+            (None, None),
+        ] {
+            let artifact = network_path_artifact(class, verified);
+            let metadata = LeaderMetadataLookup::from_artifact(&artifact).lookup(20, "leader-dz");
+            assert!(
+                !leader_matches_network_path(&metadata, LeaderNetworkPathClass::Doublezero),
+                "unexpected eligible route class={class:?} verified={verified:?}"
+            );
+        }
     }
 }

@@ -4,8 +4,8 @@ use solana_tx_bench::{
     collect_rpcedge_observations, generate_comparison, generate_report,
     observation_summary_markdown, provider_observers::add_default_provider_observation_accounts,
     run_benchmark, run_leader_paced, summarize_observations, BenchConfig, CompareOptions,
-    LeaderPacedOptions, LeaderPacedRouteStrategy, LeaderPacedTrigger, LeaderSlotsCaptureConfig,
-    ObservationEvent, RpcEdgeCollectConfig, RpcEdgeLeaderCollector,
+    LeaderNetworkPathClass, LeaderPacedOptions, LeaderPacedRouteStrategy, LeaderPacedTrigger,
+    LeaderSlotsCaptureConfig, ObservationEvent, RpcEdgeCollectConfig, RpcEdgeLeaderCollector,
 };
 use std::{
     fs,
@@ -70,12 +70,21 @@ enum Command {
         leader_slots_api_key: Option<String>,
         #[arg(long, default_value_t = 512)]
         leader_slots_lookahead: u64,
-        #[arg(long, default_value = "static")]
+        #[arg(
+            long,
+            default_value = "static",
+            help = "Routing strategy: static, client_aware, always_race, software_client_aware, paired_route_policies, or paired_providers"
+        )]
         route_strategy: String,
         #[arg(long)]
         client_aware_harmonic_cu_price_microlamports: Option<u64>,
         #[arg(long, value_delimiter = ',')]
         observation_account: Vec<String>,
+        #[arg(
+            long,
+            help = "Require a verified getLeaderSlots networkPath class before sending"
+        )]
+        leader_network_path_class: Option<String>,
     },
     InitConfig {
         #[arg(long, default_value = "bench.example.yaml")]
@@ -181,6 +190,7 @@ async fn main() -> Result<()> {
             route_strategy,
             client_aware_harmonic_cu_price_microlamports,
             observation_account,
+            leader_network_path_class,
         } => {
             let text = fs::read_to_string(&config)
                 .with_context(|| format!("read {}", config.display()))?;
@@ -226,6 +236,10 @@ async fn main() -> Result<()> {
                     client_aware_harmonic_cu_price_microlamports,
                     trigger,
                     extra_observation_accounts: observation_account,
+                    required_network_path_class: leader_network_path_class
+                        .map(|value| value.parse::<LeaderNetworkPathClass>())
+                        .transpose()
+                        .map_err(anyhow::Error::msg)?,
                 },
             )
             .await?;
@@ -409,9 +423,10 @@ fn parse_route_strategy(raw: &str) -> Result<LeaderPacedRouteStrategy> {
         "paired_route_policies" | "paired-route-policies" | "paired" => {
             Ok(LeaderPacedRouteStrategy::PairedRoutePolicies)
         }
+        "paired_providers" | "paired-providers" => Ok(LeaderPacedRouteStrategy::PairedProviders),
         other => {
             anyhow::bail!(
-                "unknown route strategy `{other}`; expected `static`, `client_aware`, `always_race`, `software_client_aware`, or `paired_route_policies`"
+                "unknown route strategy `{other}`; expected `static`, `client_aware`, `always_race`, `software_client_aware`, `paired_route_policies`, or `paired_providers`"
             )
         }
     }

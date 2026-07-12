@@ -14,6 +14,8 @@ pub struct BenchManifest {
     pub generated_at: DateTime<Utc>,
     pub rpc_url_label: String,
     pub keypair_pubkey: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keypair_pubkeys: Vec<String>,
     pub count: usize,
     pub duration_seconds: Option<u64>,
     pub rate_per_second: Option<f64>,
@@ -23,6 +25,8 @@ pub struct BenchManifest {
     pub memo_prefix: String,
     pub max_spend_lamports: Option<u64>,
     pub route_strategy: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leader_network_path_class: Option<String>,
     pub client_aware_harmonic_cu_price_microlamports: Option<u64>,
     #[serde(default = "default_resend_attempts")]
     pub resend_attempts: usize,

@@ -7,6 +7,7 @@ artifacts/<test_id>/
   manifest.json
   samples.ndjson
   leader-sends.ndjson
+  leader-runs.ndjson
   leader-slots-snapshot.json
   leader-slots-snapshot-<start_slot>.json
   rpcedge-observations/entries.ndjson
@@ -23,6 +24,8 @@ artifacts/<test_id>/
   comparison.md
   comparison.html
   index.html
+  paired-rows.json
+  paired-rows.csv
 ```
 
 ## manifest.json
@@ -112,6 +115,17 @@ One JSON object per signed benchmark transaction:
 - `selected_routes`
 
 This file is the public join surface for later leader-cohort enrichment.
+
+Paired-provider sends also record `payer_pubkey`, `recent_blockhash`, and the
+verified leader network-path/stake/location fields used at send time.
+
+## leader-runs.ndjson
+
+One decision per observed contiguous leader run, including runs skipped by
+`--leader-network-path-class`. Each row stores route class, verification and
+observation time, RTT evidence, stake/location context, eligibility, and a
+stable skip reason. It is the denominator for actual run-window leader-run and
+scheduled-slot coverage.
 
 ## leader-slots-snapshot.json
 
@@ -388,6 +402,12 @@ Paired samples include:
 Compare policies within `comparison_group_id`. Separate 5-minute artifact
 directories for TPU-only and always-race are valid route smoke tests, but they
 are not valid A/B performance comparisons.
+
+For a two-arm artifact, `compare` adds `paired-rows.json` and
+`paired-rows.csv`. Each row is one comparison group and observation source,
+with both signatures, leader/path context, complete or one-sided status, both
+latencies, and `candidate - baseline` latency, landed-slot, and block-position
+deltas. Aggregate paired summaries are embedded in every comparison report.
 
 The scoring model reports five buckets:
 

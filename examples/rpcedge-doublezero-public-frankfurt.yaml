@@ -1,0 +1,34 @@
+test_id: null
+paired_payer_keypair_paths:
+  - /home/sol/solana-tx-bench/secrets/bench-keypair.json
+  - /home/sol/solana-tx-bench/secrets/bench-keypair-paired.json
+rpc_url: http://127.0.0.1:8899
+artifact_dir: /home/sol/solana-tx-bench/artifacts
+providers:
+  # Arm 0 is the baseline. The Frankfurt wrapper forces this relay UID through
+  # the public bond0 route table.
+  - name: public_internet
+    kind: rpcedge_route_aware_http
+    endpoint: http://127.0.0.1:19095/v1/submit
+    api_key_env: RPCEDGE_API_KEY
+    route_mode: only
+    routes:
+      - tpu_quic
+  # Arm 1 is the candidate. The production relay follows DoubleZero's
+  # more-specific TPU routes through doublezero0.
+  - name: doublezero
+    kind: rpcedge_route_aware_http
+    endpoint: http://127.0.0.1:9095/v1/submit
+    api_key_env: RPCEDGE_API_KEY
+    route_mode: only
+    routes:
+      - tpu_quic
+count: 1
+duration_seconds: null
+rate_per_second: null
+lamports: 500
+compute_unit_limit: 660
+compute_unit_price_microlamports: 0
+memo_prefix: doublezero-public-frankfurt
+max_spend_lamports: 2000000
+timeout_ms: 2000

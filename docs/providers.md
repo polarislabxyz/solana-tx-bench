@@ -222,3 +222,9 @@ Provider adapters should keep protocol-specific behavior isolated:
 When comparing providers concurrently, prefer one funded sender keypair per
 provider. Shared fee-payer accounts can serialize or otherwise couple traffic
 and make route comparisons less clean.
+
+`paired_providers` enforces that isolation: configure exactly two route-aware
+providers and two `paired_payer_keypair_paths`. It binds one signed transaction
+to each provider, rotates payer assignment between leader runs, and overrides
+both route sets to `only: [tpu_quic]`. Provider order defines baseline arm 0 and
+candidate arm 1 in paired reports.

@@ -240,9 +240,49 @@ This signs one transaction per policy arm, then submits that same signature
 three times at `0ms`, `+50ms`, and `+100ms`. Landing remains measured per
 unique signature; provider ACK diagnostics are recorded per attempt.
 
+### Paired provider paths
+
+Use `paired_providers` when two equivalent relay processes select different
+network paths. It creates one arm per configured provider and sends each signed
+transaction only to its assigned provider. The mode requires exactly two
+route-aware providers and two `paired_payer_keypair_paths`.
+
+Payer assignment swaps across arms by leader run. This prevents concurrent
+transactions from sharing a writable fee payer and prevents either route from
+remaining coupled to one payer identity.
+
+The Frankfurt DoubleZero/public config is
+`examples/rpcedge-doublezero-public-frankfurt.yaml`. Run it inside the
+Frankfurt transient public-route wrapper:
+
+```bash
+solana-tx-bench run-leader-paced \
+  --config examples/rpcedge-doublezero-public-frankfurt.yaml \
+  --duration-seconds 900 \
+  --txs-per-leader-run 1 \
+  --leader-run-concurrency 2 \
+  --route-strategy paired_providers \
+  --leader-network-path-class doublezero \
+  --slot-trigger grpc_slot \
+  --capture-leader-slots \
+  --collect-rpcedge \
+  --collect-entries
+```
+
+`networkPath.class=doublezero` is eligible only when `verified=true`; Edge
+publication fields are not TPU route evidence. Provider config order defines
+the comparison: arm 0 is baseline, arm 1 is candidate, and every reported delta
+is `candidate - baseline`. Put public Internet first and DoubleZero second so a
+negative latency delta means DoubleZero was observed sooner.
+
+The output measures matched deshred/processed observation, landed-slot, and
+block-position outcomes. It does not measure packet-arrival time inside the
+leader TPU. Provider ACK remains a local acceptance diagnostic.
+
 Leader-paced outputs add:
 
 - `leader-sends.ndjson`
+- `leader-runs.ndjson`
 - `leader-slots-snapshot.json`, when `--capture-leader-slots` is enabled
 - `leader-slots-snapshot-<start_slot>.json`, for rolling gRPC-slot refreshes
 - `matched-observations.ndjson`

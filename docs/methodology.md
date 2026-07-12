@@ -313,6 +313,35 @@ signature; `samples.ndjson` has one row per provider submission attempt.
 Reports still measure landing per unique signature, while ACK diagnostics and
 route-result rows expose per-attempt sender behavior.
 
+### Paired network providers
+
+`paired_providers` is the transport-isolation variant. It requires exactly two
+route-aware providers and creates one transaction for each provider from the
+same leader-run trigger and recent blockhash. Each arm is sent only through its
+assigned provider; the runner does not create a provider-by-arm cross product.
+
+The config must provide two distinct `paired_payer_keypair_paths`. Payer
+assignment swaps by leader-run start slot while provider arm indices remain
+stable. Both transactions therefore have independent writable fee payers, and
+results remain comparable after grouping by `comparison_group_id`.
+
+Use `--leader-network-path-class doublezero` to restrict a run to current
+Frankfurt sender evidence. Eligibility requires both the requested class and
+`networkPath.verified=true`; missing or stale data fails closed. The
+`doublezeroEdge` object is not consulted.
+
+Provider config order defines the comparison:
+
+```text
+arm 0 = baseline
+arm 1 = candidate
+delta = candidate - baseline
+```
+
+Negative latency is a candidate win. One-sided and unobserved groups are
+reported separately from complete-pair wins. These are matched landing and
+stream-observation outcomes, not timestamps taken at the remote TPU socket.
+
 Rakurai and Raiku are intentionally not mapped to Jito or Harmonic by the
 software-client-aware strategy as a proved integration. Rakurai publishes its
 own transaction-inclusion and virtual-priority path, and Raiku appears as a
