@@ -321,9 +321,10 @@ same leader-run trigger and recent blockhash. Each arm is sent only through its
 assigned provider; the runner does not create a provider-by-arm cross product.
 
 The config must provide two distinct `paired_payer_keypair_paths`. Payer
-assignment swaps by leader-run start slot while provider arm indices remain
-stable. Both transactions therefore have independent writable fee payers, and
-results remain comparable after grouping by `comparison_group_id`.
+assignment swaps by the four-slot leader-group index while provider arm indices
+remain stable. Both transactions therefore have independent writable fee
+payers, and results remain comparable after grouping by
+`comparison_group_id`.
 
 Use `--leader-network-path-class doublezero` to restrict a run to current
 Frankfurt sender evidence. Eligibility requires both the requested class and

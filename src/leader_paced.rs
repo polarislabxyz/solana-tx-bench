@@ -1244,7 +1244,7 @@ fn load_payers(
 }
 
 fn paired_payer_index(policy_arm_index: usize, leader_run_start_slot: u64) -> usize {
-    (policy_arm_index + leader_run_start_slot as usize) % 2
+    (policy_arm_index + (leader_run_start_slot / 4) as usize) % 2
 }
 
 fn rotate_policy_arms(arms: &mut [PolicyArm], leader_run_start_slot: u64, group_index: usize) {
@@ -1703,10 +1703,10 @@ mod tests {
 
     #[test]
     fn paired_payer_assignment_rotates_by_leader_run() {
-        assert_eq!(paired_payer_index(0, 100), 0);
-        assert_eq!(paired_payer_index(1, 100), 1);
-        assert_eq!(paired_payer_index(0, 101), 1);
-        assert_eq!(paired_payer_index(1, 101), 0);
+        assert_ne!(paired_payer_index(0, 100), paired_payer_index(1, 100));
+        assert_ne!(paired_payer_index(0, 104), paired_payer_index(1, 104));
+        assert_ne!(paired_payer_index(0, 100), paired_payer_index(0, 104));
+        assert_ne!(paired_payer_index(1, 100), paired_payer_index(1, 104));
     }
 
     #[test]

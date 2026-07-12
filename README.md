@@ -247,9 +247,9 @@ network paths. It creates one arm per configured provider and sends each signed
 transaction only to its assigned provider. The mode requires exactly two
 route-aware providers and two `paired_payer_keypair_paths`.
 
-Payer assignment swaps across arms by leader run. This prevents concurrent
-transactions from sharing a writable fee payer and prevents either route from
-remaining coupled to one payer identity.
+Payer assignment swaps across arms by the four-slot leader-group index. This
+prevents concurrent transactions from sharing a writable fee payer and
+prevents either route from remaining coupled to one payer identity.
 
 The Frankfurt DoubleZero/public config is
 `examples/rpcedge-doublezero-public-frankfurt.yaml`. Run it inside the
