@@ -8,21 +8,23 @@ providers:
   # Arm 0 is the baseline. The Frankfurt wrapper forces this relay UID through
   # the public bond0 route table.
   - name: public_internet
-    kind: rpcedge_route_aware_http
-    endpoint: http://127.0.0.1:19095/v1/submit
+    kind: rpcedge_quic_raw_tx
+    endpoint: "127.0.0.1:19433"
     api_key_env: RPCEDGE_API_KEY
     route_mode: only
     routes:
       - tpu_quic
+    server_name: relay.rpcedge.com
   # Arm 1 is the candidate. The production relay follows DoubleZero's
   # more-specific TPU routes through doublezero0.
   - name: doublezero
-    kind: rpcedge_route_aware_http
-    endpoint: http://127.0.0.1:9095/v1/submit
+    kind: rpcedge_quic_raw_tx
+    endpoint: "127.0.0.1:4433"
     api_key_env: RPCEDGE_API_KEY
     route_mode: only
     routes:
       - tpu_quic
+    server_name: relay.rpcedge.com
 count: 1
 duration_seconds: null
 rate_per_second: null

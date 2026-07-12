@@ -245,7 +245,9 @@ unique signature; provider ACK diagnostics are recorded per attempt.
 Use `paired_providers` when two equivalent relay processes select different
 network paths. It creates one arm per configured provider and sends each signed
 transaction only to its assigned provider. The mode requires exactly two
-route-aware providers and two `paired_payer_keypair_paths`.
+route-aware providers and two `paired_payer_keypair_paths`. The Frankfurt
+DoubleZero/public benchmark uses the same framed QUIC adapter as the existing
+leader-paced relay benchmark for both arms.
 
 Payer assignment swaps across arms by leader run. This prevents concurrent
 transactions from sharing a writable fee payer and prevents either route from
