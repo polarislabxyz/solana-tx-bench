@@ -54,6 +54,8 @@
     .bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .table-wrap { overflow-x: auto; border: 1px solid var(--line); }
     table { width: 100%; border-collapse: collapse; min-width: 720px; }
+    .identity-table { min-width: 980px; }
+    .identity { white-space: nowrap; }
     th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: right; }
     th:first-child, td:first-child { text-align: left; }
     th { background: var(--soft); font-size: 0.82rem; }
@@ -116,6 +118,28 @@
       compared, and a pair was excluded if its entry sequence was incomplete.
     </p>
 
+    <h2>PoH tick-delta percentiles</h2>
+    <p>
+      Tick delta is the DoubleZero transaction's preceding-tick count minus the
+      public transaction's count. A negative value favors DoubleZero; for
+      example, <code>-3</code> means the DoubleZero transaction was recorded
+      three PoH intervals earlier in the same slot.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Population</th><th>Pairs</th><th>Minimum</th><th>p10</th><th>p25</th><th>p50</th><th>p75</th><th>p90</th><th>p95</th><th>Maximum</th></tr></thead>
+        <tbody>
+          <tr><td>All tick-complete pairs: signed delta</td><td>200</td><td>-11</td><td>-4</td><td>-2</td><td>0</td><td>0</td><td>0</td><td>0</td><td>4</td></tr>
+          <tr><td>DoubleZero-earlier pairs: advantage magnitude</td><td>91</td><td>1</td><td>1</td><td>2</td><td>2</td><td>3</td><td>4</td><td>5</td><td>11</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">
+      The second row is conditional on DoubleZero winning and therefore must be
+      read together with the first row and the 105 same-interval outcomes.
+      Percentiles use the nearest observed rank.
+    </p>
+
     <h2>PoH placement by leader city</h2>
     <div class="legend">
       <span><i class="dot dz"></i>DoubleZero earlier</span>
@@ -132,7 +156,7 @@
     </div>
     <p class="note">
       The six largest city cohorts contain 191 of the 200 tick-complete pairs.
-      The remaining nine pairs span Sao Paulo, Tokyo, Hong Kong, Bloomfield,
+      The remaining nine pairs span São Paulo, Tokyo, Hong Kong, Bloomfield,
       Los Angeles, Prague, and Stockholm.
     </p>
 
@@ -183,14 +207,56 @@
       samples.
     </p>
 
-    <h2>Why the earlier report said “Unknown”</h2>
+    <h2>Location data</h2>
     <p>
-      Location was present. The saved <code>getLeaderSlots</code> snapshots
-      included city and datacenter keys, but the validator tracker’s coarse
-      region classifier did not map Canada, Brazil, or Sweden into one of its
-      current buckets. It therefore labeled those rows <code>Unknown</code>.
-      Of 79 complete processed pairs in that bucket, 76 were Beauharnois, one
-      was Stockholm, and two were Sao Paulo.
+      Leader city, country, latitude, longitude, and datacenter key come from
+      the historical <code>getLeaderSlots</code> snapshots captured during the
+      benchmark. Distances are calculated from the saved coordinates to the
+      Frankfurt sender. The report does not use the API's coarse region field:
+      that taxonomy can classify a validator as <code>Unknown</code> even when
+      its exact city and coordinates are present.
+    </p>
+
+    <h2>PoH placement by validator identity</h2>
+    <p>
+      Twenty-one of the 29 eligible identities produced at least one same-slot,
+      tick-complete pair. The table keeps each validator separate so repeated
+      leader runs are visible rather than being mistaken for independent
+      geographic samples. Full identities and machine-readable values are in
+      <a href="summary.json">summary.json</a>.
+    </p>
+    <div class="table-wrap">
+      <table class="identity-table">
+        <thead><tr><th>Validator identity</th><th>Location</th><th>Distance</th><th>Pairs</th><th>DZ earlier</th><th>Same</th><th>Public earlier</th><th>PoH delta p10 / p50 / p90</th><th>Processed delta p50</th></tr></thead>
+        <tbody>
+          <tr><td><code class="identity" title="Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk">Fd7btgySsrju…</code></td><td>Beauharnois, CA</td><td>5,876 km</td><td>73</td><td>71</td><td>1</td><td>1</td><td>-4 / -3 / -1</td><td>-6.683 ms</td></tr>
+          <tr><td><code class="identity" title="9eGrDohdNTAo61DRHyfMuqKWXqYnA3i254Wiszxe8FoY">9eGrDohdNTAo…</code></td><td>London, GB</td><td>637 km</td><td>31</td><td>0</td><td>31</td><td>0</td><td>0 / 0 / 0</td><td>0.006 ms</td></tr>
+          <tr><td><code class="identity" title="5pPRHniefFjkiaArbGX3Y8NUysJmQ9tMZg3FrFGwHzSm">5pPRHniefFjk…</code></td><td>Luxembourg, LU</td><td>185 km</td><td>26</td><td>4</td><td>22</td><td>0</td><td>-1 / 0 / 0</td><td>0.005 ms</td></tr>
+          <tr><td><code class="identity" title="JD549HsbJHeEKKUrKgg4Fj2iyv2RGjsV7NTZjZUrHybB">JD549HsbJHeE…</code></td><td>London, GB</td><td>637 km</td><td>25</td><td>0</td><td>25</td><td>0</td><td>0 / 0 / 0</td><td>0.007 ms</td></tr>
+          <tr><td><code class="identity" title="CoG8d9Fp2TFJRkAmrPMiPsGhQWHzdTTVoegEp9svRgmJ">CoG8d9Fp2TFJ…</code></td><td>Singapore, SG</td><td>10,260 km</td><td>11</td><td>10</td><td>1</td><td>0</td><td>-2 / -1 / -1</td><td>-0.015 ms</td></tr>
+          <tr><td><code class="identity" title="ana2y2YvQ3ZPMwm6qhnN3nJoUSiT3qx5Pvetkq9xcfY">ana2y2YvQ3ZP…</code></td><td>Aubervilliers, FR</td><td>473 km</td><td>11</td><td>0</td><td>9</td><td>2</td><td>0 / 0 / 1</td><td>0.009 ms</td></tr>
+          <tr><td><code class="identity" title="7cVfgArCheMR6Cs4t6vz5rfnqd56vZq4ndaBrY5xkxXy">7cVfgArCheMR…</code></td><td>Amsterdam, NL</td><td>365 km</td><td>7</td><td>0</td><td>6</td><td>1</td><td>0 / 0 / 1</td><td>0.014 ms</td></tr>
+          <tr><td><code class="identity" title="HH5dA42XF1HxNk1TRpG6LuKfLViMYNdAz5iWrFM4hWFi">HH5dA42XF1Hx…</code></td><td>Amsterdam, NL</td><td>365 km</td><td>2</td><td>0</td><td>2</td><td>0</td><td>0 / 0 / 0</td><td>-0.004 ms</td></tr>
+          <tr><td><code class="identity" title="mds4GEuiSgQRqveGyktWpETBFCb4AS2wDnhqwLHcT6Z">mds4GEuiSgQR…</code></td><td>Tokyo, JP</td><td>9,332 km</td><td>2</td><td>2</td><td>0</td><td>0</td><td>-5 / -5 / -5</td><td>-20.278 ms</td></tr>
+          <tr><td><code class="identity" title="2dfgsiSaZ51QYPsECMYMG247PXxyKdwkV9wTHoQb8YEC">2dfgsiSaZ51Q…</code></td><td>Amsterdam, NL</td><td>365 km</td><td>1</td><td>0</td><td>1</td><td>0</td><td>0 / 0 / 0</td><td>-0.006 ms</td></tr>
+          <tr><td><code class="identity" title="2mMGsb5uy1Q4Dvezr8HK2E8SJoChcb2X7b61tJPaVHHd">2mMGsb5uy1Q4…</code></td><td>Stockholm, SE</td><td>1,187 km</td><td>1</td><td>0</td><td>1</td><td>0</td><td>0 / 0 / 0</td><td>-0.008 ms</td></tr>
+          <tr><td><code class="identity" title="ACvL73V4GNnxPVfZ7K89jCrYurLyzpEuE9qirjvh2Xmi">ACvL73V4GNnx…</code></td><td>Luxembourg, LU</td><td>185 km</td><td>1</td><td>0</td><td>1</td><td>0</td><td>0 / 0 / 0</td><td>0.011 ms</td></tr>
+          <tr><td><code class="identity" title="EBk678aQvc3cUkfGyoehfw21JQfJXjmWuBeopYc89RSV">EBk678aQvc3c…</code></td><td>Los Angeles, US</td><td>Unavailable</td><td>1</td><td>1</td><td>0</td><td>0</td><td>-1 / -1 / -1</td><td>-0.053 ms</td></tr>
+          <tr><td><code class="identity" title="ECZx4Dfyn2o55KTYbM9r3Dt4VZRcrdfdrst7sUbWgrdU">ECZx4Dfyn2o5…</code></td><td>Bloomfield, US</td><td>6,208 km</td><td>1</td><td>0</td><td>1</td><td>0</td><td>0 / 0 / 0</td><td>0.009 ms</td></tr>
+          <tr><td><code class="identity" title="H8fHToVcZPi5bupGZohGPX2SWs8NHzgFKQ31wi5n6oux">H8fHToVcZPi5…</code></td><td>London, EN</td><td>635 km</td><td>1</td><td>1</td><td>0</td><td>0</td><td>-2 / -2 / -2</td><td>-0.989 ms</td></tr>
+          <tr><td><code class="identity" title="HW4zorvt6xDwhU36RqjcWNwU8YMj9tiqnAafBKW4cqV">HW4zorvt6xDw…</code></td><td>Hong Kong, HK</td><td>9,163 km</td><td>1</td><td>0</td><td>1</td><td>0</td><td>0 / 0 / 0</td><td>0.005 ms</td></tr>
+          <tr><td><code class="identity" title="RNXnAJV1DeBt6Lytjz4wYzvS3d6bhsfidS5Np4ovwZz">RNXnAJV1DeBt…</code></td><td>Prague, CZ</td><td>409 km</td><td>1</td><td>0</td><td>1</td><td>0</td><td>0 / 0 / 0</td><td>0.011 ms</td></tr>
+          <tr><td><code class="identity" title="SA1LFXr4os2P4VKGUyRv84uFfuUYgcQkFh2uA4SmRcr">SA1LFXr4os2P…</code></td><td>São Paulo, BR</td><td>9,829 km</td><td>1</td><td>1</td><td>0</td><td>0</td><td>-5 / -5 / -5</td><td>-26.819 ms</td></tr>
+          <tr><td><code class="identity" title="SSmBEooM7RkmyuXxuKgAhTvhQZ36Z3G2WsmLGJKoQLY">SSmBEooM7Rkm…</code></td><td>Amsterdam, NL</td><td>365 km</td><td>1</td><td>0</td><td>1</td><td>0</td><td>0 / 0 / 0</td><td>-0.010 ms</td></tr>
+          <tr><td><code class="identity" title="kom1oNHyyt84XLGVfi5Jo1qkVkU5xG1sBxPG19rWknE">kom1oNHyyt84…</code></td><td>Amsterdam, NL</td><td>365 km</td><td>1</td><td>0</td><td>1</td><td>0</td><td>0 / 0 / 0</td><td>0.011 ms</td></tr>
+          <tr><td><code class="identity" title="mALL2W6DUgDDtcyurC9v5YTF2CMMeuRwPBkf6tEoG3y">mALL2W6DUgDD…</code></td><td>São Paulo, BR</td><td>9,829 km</td><td>1</td><td>1</td><td>0</td><td>0</td><td>-5 / -5 / -5</td><td>-18.096 ms</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">
+      Negative PoH and processed deltas favor DoubleZero. Percentiles for
+      one- and two-pair validators are descriptive only and carry very low
+      confidence.
     </p>
 
     <h2>Landing and observation results</h2>

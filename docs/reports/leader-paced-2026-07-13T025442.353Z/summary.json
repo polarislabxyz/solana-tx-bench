@@ -35,7 +35,21 @@
       "doublezero_earlier": 91,
       "same": 105,
       "public_earlier": 4,
-      "delta_p50": 0
+      "delta_percentiles": {"p0":-11,"p10":-4,"p25":-2,"p50":0,"p75":0,"p90":0,"p95":0,"p100":4},
+      "doublezero_earlier_magnitude_percentiles": {"pairs":91,"p0":1,"p10":1,"p25":2,"p50":2,"p75":3,"p90":4,"p95":5,"p100":11},
+      "delta_distribution": [
+        {"delta":-11,"pairs":1},
+        {"delta":-10,"pairs":1},
+        {"delta":-6,"pairs":1},
+        {"delta":-5,"pairs":6},
+        {"delta":-4,"pairs":12},
+        {"delta":-3,"pairs":22},
+        {"delta":-2,"pairs":25},
+        {"delta":-1,"pairs":23},
+        {"delta":0,"pairs":105},
+        {"delta":1,"pairs":3},
+        {"delta":4,"pairs":1}
+      ]
     }
   },
   "poh_by_city": [
@@ -45,9 +59,9 @@
     {"city":"Amsterdam","pairs":12,"doublezero_earlier":0,"same":11,"public_earlier":1,"doublezero_route_rtt_us":5920},
     {"city":"Aubervilliers","pairs":11,"doublezero_earlier":0,"same":9,"public_earlier":2,"doublezero_route_rtt_us":18500},
     {"city":"Singapore","pairs":11,"doublezero_earlier":10,"same":1,"public_earlier":0,"doublezero_route_rtt_us":145000},
-    {"city":"Sao Paulo","pairs":2,"doublezero_earlier":2,"same":0,"public_earlier":0,"doublezero_route_rtt_us":null},
+    {"city":"São Paulo","pairs":2,"doublezero_earlier":2,"same":0,"public_earlier":0,"doublezero_route_rtt_us":null},
     {"city":"Tokyo","pairs":2,"doublezero_earlier":2,"same":0,"public_earlier":0,"doublezero_route_rtt_us":null},
-    {"city":"Hong Kong","pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"doublezero_route_rtt_us":null},
+    {"city":"Asia/Hong_Kong","pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"doublezero_route_rtt_us":null},
     {"city":"Bloomfield","pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"doublezero_route_rtt_us":null},
     {"city":"Los Angeles","pairs":1,"doublezero_earlier":1,"same":0,"public_earlier":0,"doublezero_route_rtt_us":null},
     {"city":"Prague","pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"doublezero_route_rtt_us":null},
@@ -58,6 +72,29 @@
     {"distance_bucket":"1000_to_5000_km","validators":1,"pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0},
     {"distance_bucket":"at_least_5000_km","validators":7,"pairs":90,"doublezero_earlier":85,"same":4,"public_earlier":1},
     {"distance_bucket":"coordinate_unavailable","validators":1,"pairs":1,"doublezero_earlier":1,"same":0,"public_earlier":0}
+  ],
+  "poh_by_validator": [
+    {"identity":"Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk","city":"Beauharnois","country":"CA","distance_km":5876,"pairs":73,"doublezero_earlier":71,"same":1,"public_earlier":1,"tick_delta_p10":-4,"tick_delta_p50":-3,"tick_delta_p90":-1,"processed_delta_p50_ms":-6.683},
+    {"identity":"9eGrDohdNTAo61DRHyfMuqKWXqYnA3i254Wiszxe8FoY","city":"London","country":"GB","distance_km":637,"pairs":31,"doublezero_earlier":0,"same":31,"public_earlier":0,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":0,"processed_delta_p50_ms":0.006},
+    {"identity":"5pPRHniefFjkiaArbGX3Y8NUysJmQ9tMZg3FrFGwHzSm","city":"Luxembourg","country":"LU","distance_km":185,"pairs":26,"doublezero_earlier":4,"same":22,"public_earlier":0,"tick_delta_p10":-1,"tick_delta_p50":0,"tick_delta_p90":0,"processed_delta_p50_ms":0.005},
+    {"identity":"JD549HsbJHeEKKUrKgg4Fj2iyv2RGjsV7NTZjZUrHybB","city":"London","country":"GB","distance_km":637,"pairs":25,"doublezero_earlier":0,"same":25,"public_earlier":0,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":0,"processed_delta_p50_ms":0.007},
+    {"identity":"CoG8d9Fp2TFJRkAmrPMiPsGhQWHzdTTVoegEp9svRgmJ","city":"Singapore","country":"SG","distance_km":10260,"pairs":11,"doublezero_earlier":10,"same":1,"public_earlier":0,"tick_delta_p10":-2,"tick_delta_p50":-1,"tick_delta_p90":-1,"processed_delta_p50_ms":-0.015},
+    {"identity":"ana2y2YvQ3ZPMwm6qhnN3nJoUSiT3qx5Pvetkq9xcfY","city":"Aubervilliers","country":"FR","distance_km":473,"pairs":11,"doublezero_earlier":0,"same":9,"public_earlier":2,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":1,"processed_delta_p50_ms":0.009},
+    {"identity":"7cVfgArCheMR6Cs4t6vz5rfnqd56vZq4ndaBrY5xkxXy","city":"Amsterdam","country":"NL","distance_km":365,"pairs":7,"doublezero_earlier":0,"same":6,"public_earlier":1,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":1,"processed_delta_p50_ms":0.014},
+    {"identity":"HH5dA42XF1HxNk1TRpG6LuKfLViMYNdAz5iWrFM4hWFi","city":"Amsterdam","country":"NL","distance_km":365,"pairs":2,"doublezero_earlier":0,"same":2,"public_earlier":0,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":0,"processed_delta_p50_ms":-0.004},
+    {"identity":"mds4GEuiSgQRqveGyktWpETBFCb4AS2wDnhqwLHcT6Z","city":"Tokyo","country":"JP","distance_km":9332,"pairs":2,"doublezero_earlier":2,"same":0,"public_earlier":0,"tick_delta_p10":-5,"tick_delta_p50":-5,"tick_delta_p90":-5,"processed_delta_p50_ms":-20.278},
+    {"identity":"2dfgsiSaZ51QYPsECMYMG247PXxyKdwkV9wTHoQb8YEC","city":"Amsterdam","country":"NL","distance_km":365,"pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":0,"processed_delta_p50_ms":-0.006},
+    {"identity":"2mMGsb5uy1Q4Dvezr8HK2E8SJoChcb2X7b61tJPaVHHd","city":"Stockholm","country":"SE","distance_km":1187,"pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":0,"processed_delta_p50_ms":-0.008},
+    {"identity":"ACvL73V4GNnxPVfZ7K89jCrYurLyzpEuE9qirjvh2Xmi","city":"Luxembourg","country":"LU","distance_km":185,"pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":0,"processed_delta_p50_ms":0.011},
+    {"identity":"EBk678aQvc3cUkfGyoehfw21JQfJXjmWuBeopYc89RSV","city":"Los Angeles","country":"US","distance_km":null,"pairs":1,"doublezero_earlier":1,"same":0,"public_earlier":0,"tick_delta_p10":-1,"tick_delta_p50":-1,"tick_delta_p90":-1,"processed_delta_p50_ms":-0.053},
+    {"identity":"ECZx4Dfyn2o55KTYbM9r3Dt4VZRcrdfdrst7sUbWgrdU","city":"Bloomfield","country":"US","distance_km":6208,"pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":0,"processed_delta_p50_ms":0.009},
+    {"identity":"H8fHToVcZPi5bupGZohGPX2SWs8NHzgFKQ31wi5n6oux","city":"London","country":"EN","distance_km":635,"pairs":1,"doublezero_earlier":1,"same":0,"public_earlier":0,"tick_delta_p10":-2,"tick_delta_p50":-2,"tick_delta_p90":-2,"processed_delta_p50_ms":-0.989},
+    {"identity":"HW4zorvt6xDwhU36RqjcWNwU8YMj9tiqnAafBKW4cqV","city":"Asia/Hong_Kong","country":"HK","distance_km":9163,"pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":0,"processed_delta_p50_ms":0.005},
+    {"identity":"RNXnAJV1DeBt6Lytjz4wYzvS3d6bhsfidS5Np4ovwZz","city":"Prague","country":"CZ","distance_km":409,"pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":0,"processed_delta_p50_ms":0.011},
+    {"identity":"SA1LFXr4os2P4VKGUyRv84uFfuUYgcQkFh2uA4SmRcr","city":"São Paulo","country":"BR","distance_km":9829,"pairs":1,"doublezero_earlier":1,"same":0,"public_earlier":0,"tick_delta_p10":-5,"tick_delta_p50":-5,"tick_delta_p90":-5,"processed_delta_p50_ms":-26.819},
+    {"identity":"SSmBEooM7RkmyuXxuKgAhTvhQZ36Z3G2WsmLGJKoQLY","city":"Amsterdam","country":"NL","distance_km":365,"pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":0,"processed_delta_p50_ms":-0.010},
+    {"identity":"kom1oNHyyt84XLGVfi5Jo1qkVkU5xG1sBxPG19rWknE","city":"Amsterdam","country":"NL","distance_km":365,"pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":0,"processed_delta_p50_ms":0.011},
+    {"identity":"mALL2W6DUgDDtcyurC9v5YTF2CMMeuRwPBkf6tEoG3y","city":"São Paulo","country":"BR","distance_km":9829,"pairs":1,"doublezero_earlier":1,"same":0,"public_earlier":0,"tick_delta_p10":-5,"tick_delta_p50":-5,"tick_delta_p90":-5,"processed_delta_p50_ms":-18.096}
   ],
   "cost_lamports": 2460000,
   "commits": {
