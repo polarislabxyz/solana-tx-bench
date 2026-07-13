@@ -59,8 +59,6 @@ pub struct EntryPlacementEvent {
     pub slot: u64,
     pub slot_index: u64,
     pub entry_index: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub preceding_poh_ticks: Option<u64>,
     pub tx_index_in_entry: u64,
     pub entry_num_hashes: u64,
     pub entry_hash: String,

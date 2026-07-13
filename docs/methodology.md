@@ -60,9 +60,9 @@ This produces `entry-placements.ndjson` and lets the report show:
 Do not describe these fields as exact network-arrival time at the leader. They
 show where the leader recorded the transaction inside the produced block. A
 late entry placement can mean the transaction arrived late, or that the leader
-held/queued/scheduled it late. When the captured entry sequence is contiguous
-from entry zero, the benchmark counts zero-transaction tick entries before each
-transaction entry and records that value as `preceding_poh_ticks`.
+held/queued/scheduled it late. Exact PoH tick buckets require either a careful
+full-entry tick derivation or an external block-building source such as IBRL's
+per-slot `poh_index` API.
 
 ## Transaction Shape
 

@@ -258,19 +258,16 @@ Fields:
 - `slot`
 - `slot_index`
 - `entry_index`
-- `preceding_poh_ticks`: number of complete zero-transaction tick entries before
-  the transaction entry; omitted if the captured entry prefix is incomplete
 - `tx_index_in_entry`
 - `entry_num_hashes`
 - `entry_hash`
 - `entry_executed_transaction_count`
 - `entry_starting_transaction_index`
 
-Use this for "how early in the produced block did the transaction land?"
-`preceding_poh_ticks` is derived from the full entry sequence only when entry
-indexes are contiguous from zero through the transaction entry. It identifies
-the transaction's PoH tick interval inside the produced block; it is not packet
-arrival time at the leader.
+Use this for "how early in the produced block did the transaction land?" Do not
+call `entry_index` an exact PoH tick. Exact tick buckets require additional
+derivation from the full entry/tick sequence or an external block-building
+dataset such as IBRL.
 
 ## summary.json
 
