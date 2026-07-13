@@ -22,18 +22,17 @@ earliest observation per signature before calculating paired deltas. Use this
 public shape:
 
 ```text
-Block placement
-| Measure | Pairs | Candidate earlier | Same | Baseline earlier | p10 | p25 | p50 | p75 | p90 | p95 |
-
-First-observed timing
-| Population | Pairs | Candidate first | Same | Baseline first | p10 | p25 | p50 | p75 | p90 | p95 |
+Overall and every cohort breakdown
+| Measure | Pairs | Candidate earlier | Same | Baseline earlier | p50 | p95 | p99 |
 
 Landing coverage
 | Outcome | Groups |
 ```
 
-Do not add receiver-specific timing rows, absolute per-route observation-time
-tables, or different-slot pairs to the timing percentiles.
+Use the same table contract for first-observation time, processed transaction
+index, entry index, and preceding PoH ticks. Do not add receiver-specific timing
+rows, absolute per-route observation-time tables, or different-slot pairs to
+any performance percentile.
 
 For geography, group by validator identity and saved city/coordinates. Do not
 use a coarse region classifier or create a fallback geography bucket when
@@ -41,16 +40,16 @@ coordinates are available.
 
 ## Interpretation
 
-- Processed gRPC is final transaction metadata from the normal Yellowstone path.
+- Processed gRPC supplies canonical processed transaction metadata from the
+  normal Yellowstone path; it is not a finality claim.
 - SubscribeDeshred is pre-processed transaction visibility from the deshred path.
 - The report selects whichever configured receiver observed each signature
   first. It does not compare receivers with each other.
 - Processed metadata supplies canonical transaction index even when another
   receiver supplied the first-observation timestamp.
 - ACK latency is not used for the headline result.
-- Comparison scores use landing latency, landed slots, block position,
-  same-slot rate, and success ratio. Only compare runs with the same transaction
-  shape, sender region, trigger mode, observation source, and fee/tip policy.
+- Separate artifact directories are descriptive because they were collected at
+  different times. Use one paired artifact for causal route/provider claims.
 
 ## Links
 

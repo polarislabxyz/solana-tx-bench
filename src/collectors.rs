@@ -327,36 +327,39 @@ async fn connect_geyser(config: &RpcEdgeCollectConfig) -> Result<GeyserGrpcClien
 }
 
 fn processed_request(account_include: &[String]) -> SubscribeRequest {
-    let mut request = SubscribeRequest::default();
-    request.transactions = HashMap::from([(
-        "transactions".to_owned(),
-        SubscribeRequestFilterTransactions {
-            vote: Some(false),
-            failed: Some(false),
-            account_include: account_include.to_vec(),
-            ..SubscribeRequestFilterTransactions::default()
-        },
-    )]);
-    request.commitment = Some(CommitmentLevel::Processed as i32);
-    request
+    SubscribeRequest {
+        transactions: HashMap::from([(
+            "transactions".to_owned(),
+            SubscribeRequestFilterTransactions {
+                vote: Some(false),
+                failed: Some(false),
+                account_include: account_include.to_vec(),
+                ..SubscribeRequestFilterTransactions::default()
+            },
+        )]),
+        commitment: Some(CommitmentLevel::Processed as i32),
+        ..SubscribeRequest::default()
+    }
 }
 
 fn entry_request() -> SubscribeRequest {
-    let mut request = SubscribeRequest::default();
-    request.entry = HashMap::from([("entries".to_owned(), SubscribeRequestFilterEntry::default())]);
-    request.commitment = Some(CommitmentLevel::Processed as i32);
-    request
+    SubscribeRequest {
+        entry: HashMap::from([("entries".to_owned(), SubscribeRequestFilterEntry::default())]),
+        commitment: Some(CommitmentLevel::Processed as i32),
+        ..SubscribeRequest::default()
+    }
 }
 
 fn deshred_request(account_include: &[String]) -> SubscribeDeshredRequest {
-    let mut request = SubscribeDeshredRequest::default();
-    request.deshred_transactions = HashMap::from([(
-        "transactions".to_owned(),
-        SubscribeRequestFilterDeshredTransactions {
-            vote: Some(false),
-            account_include: account_include.to_vec(),
-            ..SubscribeRequestFilterDeshredTransactions::default()
-        },
-    )]);
-    request
+    SubscribeDeshredRequest {
+        deshred_transactions: HashMap::from([(
+            "transactions".to_owned(),
+            SubscribeRequestFilterDeshredTransactions {
+                vote: Some(false),
+                account_include: account_include.to_vec(),
+                ..SubscribeRequestFilterDeshredTransactions::default()
+            },
+        )]),
+        ..SubscribeDeshredRequest::default()
+    }
 }

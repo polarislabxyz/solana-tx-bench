@@ -22,6 +22,7 @@ struct Cli {
 }
 
 #[derive(Debug, Subcommand)]
+#[allow(clippy::large_enum_variant)]
 enum Command {
     Run {
         #[arg(long)]
@@ -129,10 +130,12 @@ enum Command {
         labels: Vec<String>,
         #[arg(long)]
         output_dir: PathBuf,
-        #[arg(long, default_value = "first_observed")]
-        primary_source: String,
         #[arg(long, default_value = "Transaction Landing Comparison")]
         title: String,
+        #[arg(long, requires = "sender_longitude")]
+        sender_latitude: Option<f64>,
+        #[arg(long, requires = "sender_latitude")]
+        sender_longitude: Option<f64>,
     },
 }
 
@@ -359,30 +362,41 @@ async fn main() -> Result<()> {
             artifact_dirs,
             labels,
             output_dir,
-            primary_source,
             title,
+            sender_latitude,
+            sender_longitude,
         } => {
             let comparison = generate_comparison(CompareOptions {
                 artifact_dirs,
                 labels,
                 output_dir: output_dir.clone(),
-                primary_source,
                 title,
+                sender_latitude,
+                sender_longitude,
             })?;
             println!("title={}", comparison.title);
             println!("runs={}", comparison.run_count);
-            println!(
-                "comparison_json={}",
-                output_dir.join("comparison.json").display()
-            );
-            println!(
-                "comparison_md={}",
-                output_dir.join("comparison.md").display()
-            );
-            println!(
-                "comparison_html={}",
-                output_dir.join("index.html").display()
-            );
+            if comparison.paired_comparison.is_some() {
+                println!("report={}", output_dir.join("index.html").display());
+                println!("summary={}", output_dir.join("summary.json").display());
+                println!(
+                    "paired_rows={}",
+                    output_dir.join("paired-rows.json").display()
+                );
+            } else {
+                println!(
+                    "comparison_json={}",
+                    output_dir.join("comparison.json").display()
+                );
+                println!(
+                    "comparison_md={}",
+                    output_dir.join("comparison.md").display()
+                );
+                println!(
+                    "comparison_html={}",
+                    output_dir.join("index.html").display()
+                );
+            }
         }
     }
     Ok(())

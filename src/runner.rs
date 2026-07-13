@@ -1,10 +1,12 @@
 use crate::{
     adapters::{build_adapter, SendContext},
     artifacts::{
-        summarize, ArtifactWriter, BenchManifest, BenchSample, BenchSummary, ManifestProvider,
+        summarize, ArtifactWriter, BenchManifest, BenchSample, BenchSampleContext, BenchSummary,
+        ManifestProvider,
     },
     config::BenchConfig,
     tx::{build_transactions, load_keypair, TxBuildConfig},
+    url::redact_endpoint,
 };
 use anyhow::{bail, Context, Result};
 use chrono::{SecondsFormat, Utc};
@@ -21,6 +23,12 @@ pub struct BenchRunOutput {
 
 pub async fn run_benchmark(config: BenchConfig) -> Result<BenchRunOutput> {
     let test_id = config.test_id.clone().unwrap_or_else(default_test_id);
+    let max_spend_lamports = config
+        .max_spend_lamports
+        .context("max_spend_lamports is required for every transaction-producing run")?;
+    if max_spend_lamports == 0 {
+        bail!("max_spend_lamports must be greater than zero");
+    }
     if config.providers.is_empty() {
         bail!("at least one provider is required");
     }
@@ -43,7 +51,7 @@ pub async fn run_benchmark(config: BenchConfig) -> Result<BenchRunOutput> {
         compute_unit_limit: config.compute_unit_limit,
         compute_unit_price_microlamports: config.compute_unit_price_microlamports,
     };
-    let txs = build_transactions(&tx_config, &payer, tx_count, config.max_spend_lamports)?;
+    let txs = build_transactions(&tx_config, &payer, tx_count, Some(max_spend_lamports))?;
     let timeout = Duration::from_millis(config.timeout_ms);
     let mut providers = config
         .providers
@@ -58,7 +66,7 @@ pub async fn run_benchmark(config: BenchConfig) -> Result<BenchRunOutput> {
         schema_version: 2,
         test_id: test_id.clone(),
         generated_at: Utc::now(),
-        rpc_url_label: redact_url(&config.rpc_url),
+        rpc_url_label: redact_endpoint(&config.rpc_url),
         keypair_pubkey: payer.pubkey().to_string(),
         keypair_pubkeys: vec![payer.pubkey().to_string()],
         count: tx_count,
@@ -120,27 +128,29 @@ pub async fn run_benchmark(config: BenchConfig) -> Result<BenchRunOutput> {
         let client_ack_latency_us = started.elapsed().as_micros();
         for ack in acks {
             let sample = BenchSample::from_ack(
-                &test_id,
-                tx.iteration,
-                tx.signature.to_string(),
-                None,
-                None,
-                None,
-                client_started_at,
-                client_finished_at,
-                client_ack_latency_us,
-                None,
-                None,
-                None,
-                None,
-                config.compute_unit_limit,
-                config.compute_unit_price_microlamports,
-                tx.base_fee_lamports,
-                tx.priority_fee_lamports,
-                tx.transaction_fee_lamports,
-                None,
-                None,
-                None,
+                BenchSampleContext {
+                    test_id: test_id.clone(),
+                    iteration: tx.iteration,
+                    signature: tx.signature.to_string(),
+                    comparison_group_id: None,
+                    policy_arm: None,
+                    policy_arm_index: None,
+                    client_started_at,
+                    client_finished_at,
+                    client_ack_latency_us,
+                    route_selection: None,
+                    leader_client_family: None,
+                    leader_software_client: None,
+                    leader_software_client_id: None,
+                    compute_unit_limit: config.compute_unit_limit,
+                    compute_unit_price_microlamports: config.compute_unit_price_microlamports,
+                    base_fee_lamports: tx.base_fee_lamports,
+                    priority_fee_lamports: tx.priority_fee_lamports,
+                    transaction_fee_lamports: tx.transaction_fee_lamports,
+                    resend_attempt_index: None,
+                    resend_attempts: None,
+                    resend_interval_ms: None,
+                },
                 ack,
             );
             writer.write_sample(&sample)?;
@@ -185,26 +195,6 @@ fn default_test_id() -> String {
     .replace(':', "")
 }
 
-fn redact_url(url: &str) -> String {
-    if let Ok(mut parsed) = reqwest::Url::parse(url) {
-        let _ = parsed.set_password(None);
-        if !parsed.username().is_empty() {
-            let _ = parsed.set_username("redacted");
-        }
-        let query = parsed.query().map(str::to_string);
-        if query
-            .as_deref()
-            .map(|q| q.contains("api") || q.contains("key") || q.contains("token"))
-            .unwrap_or(false)
-        {
-            parsed.set_query(Some("redacted=true"));
-        }
-        parsed.to_string()
-    } else {
-        url.to_string()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -230,7 +220,7 @@ mod tests {
 
     #[test]
     fn redacts_api_key_query() {
-        let redacted = redact_url("https://example.com/path?api-key=secret");
-        assert_eq!(redacted, "https://example.com/path?redacted=true");
+        let redacted = redact_endpoint("https://example.com/path?api-key=secret");
+        assert_eq!(redacted, "https://example.com/");
     }
 }

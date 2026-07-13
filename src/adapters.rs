@@ -390,12 +390,14 @@ impl ProviderAdapter for JsonRpcAdapter {
             ]
         });
         send_json(
-            &self.client,
-            &self.endpoint,
-            &self.headers,
-            None,
-            self.name(),
-            self.kind(),
+            JsonEndpoint {
+                client: &self.client,
+                url: &self.endpoint,
+                headers: &self.headers,
+                api_key: None,
+                provider_name: self.name(),
+                provider_kind: self.kind(),
+            },
             ctx,
             body,
             parse_json_rpc_response,
@@ -470,12 +472,14 @@ impl ProviderAdapter for RpcedgeRouteAwareAdapter {
         };
         let body = serde_json::to_value(request).expect("SubmitRequest serialization");
         send_json(
-            &self.client,
-            &self.endpoint,
-            &self.headers,
-            self.api_key.as_deref(),
-            self.name(),
-            self.kind(),
+            JsonEndpoint {
+                client: &self.client,
+                url: &self.endpoint,
+                headers: &self.headers,
+                api_key: self.api_key.as_deref(),
+                provider_name: self.name(),
+                provider_kind: self.kind(),
+            },
             ctx,
             body,
             parse_rpcedge_submit_response,
@@ -598,13 +602,17 @@ impl ProviderAdapter for RpcedgeQuicRawTxAdapter {
     }
 }
 
+struct JsonEndpoint<'a> {
+    client: &'a reqwest::Client,
+    url: &'a str,
+    headers: &'a HashMap<String, String>,
+    api_key: Option<&'a str>,
+    provider_name: &'a str,
+    provider_kind: ProviderKind,
+}
+
 async fn send_json<F>(
-    client: &reqwest::Client,
-    endpoint: &str,
-    headers: &HashMap<String, String>,
-    api_key: Option<&str>,
-    name: &str,
-    kind: ProviderKind,
+    endpoint: JsonEndpoint<'_>,
     ctx: &SendContext,
     body: serde_json::Value,
     parser: F,
@@ -618,8 +626,8 @@ where
 {
     let started = Utc::now();
     let timer = std::time::Instant::now();
-    let mut request = client.post(endpoint).json(&body);
-    request = apply_headers(request, headers, api_key);
+    let mut request = endpoint.client.post(endpoint.url).json(&body);
+    request = apply_headers(request, endpoint.headers, endpoint.api_key);
     match request.send().await {
         Ok(response) => {
             let status = response.status();
@@ -629,8 +637,8 @@ where
                     let latency = timer.elapsed().as_micros();
                     match parser(status, &value, ctx) {
                         Ok((accepted, provider_request_id, returned_signature)) => ProviderAck {
-                            provider_name: name.to_string(),
-                            provider_kind: kind,
+                            provider_name: endpoint.provider_name.to_string(),
+                            provider_kind: endpoint.provider_kind,
                             accepted,
                             provider_request_id,
                             returned_signature,
@@ -644,8 +652,8 @@ where
                             route_results_complete: None,
                         },
                         Err(err) => ProviderAck {
-                            provider_name: name.to_string(),
-                            provider_kind: kind,
+                            provider_name: endpoint.provider_name.to_string(),
+                            provider_kind: endpoint.provider_kind,
                             accepted: false,
                             provider_request_id: None,
                             returned_signature: None,
@@ -661,8 +669,8 @@ where
                     }
                 }
                 Err(err) => ack_error(
-                    name,
-                    kind,
+                    endpoint.provider_name,
+                    endpoint.provider_kind,
                     started,
                     timer,
                     Some(status.as_u16()),
@@ -671,7 +679,15 @@ where
                 ),
             }
         }
-        Err(err) => ack_error(name, kind, started, timer, None, "transport_error", err),
+        Err(err) => ack_error(
+            endpoint.provider_name,
+            endpoint.provider_kind,
+            started,
+            timer,
+            None,
+            "transport_error",
+            err,
+        ),
     }
 }
 

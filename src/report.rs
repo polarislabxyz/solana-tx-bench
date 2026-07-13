@@ -1,4 +1,5 @@
 use crate::{
+    artifact_io::{read_leader_slot_snapshots, read_ndjson},
     artifacts::BenchSample,
     leader_paced::LeaderSendEvent,
     leader_slots::LeaderSlotsSnapshotArtifact,
@@ -10,9 +11,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs::{self, File},
-    io::{BufRead, BufReader},
-    path::{Path, PathBuf},
+    fs,
+    path::Path,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -207,6 +207,7 @@ struct ObservationRow {
     latency_us: Option<i128>,
     leader: LeaderMeta,
     placement: Option<EntryPlacementEvent>,
+    processed_slot_index: Option<u64>,
 }
 
 pub fn generate_report(artifact_dir: &Path) -> Result<ReportOutput> {
@@ -280,6 +281,9 @@ pub fn generate_report(artifact_dir: &Path) -> Result<ReportOutput> {
         .iter()
         .cloned()
         .map(|event| {
+            let processed_slot_index = processed_slot_index_by_signature
+                .get(&event.signature)
+                .copied();
             let send = send_by_signature.get(&event.signature).cloned();
             let leader = event
                 .slot
@@ -312,6 +316,7 @@ pub fn generate_report(artifact_dir: &Path) -> Result<ReportOutput> {
             });
             ObservationRow {
                 placement: placement_by_signature.get(&event.signature).cloned(),
+                processed_slot_index,
                 event,
                 send,
                 latency_us,
@@ -433,52 +438,6 @@ fn first_observed_rows(rows: &[ObservationRow]) -> Vec<ObservationRow> {
             .or_insert(row);
     }
     first_by_signature.into_values().cloned().collect()
-}
-
-fn read_ndjson<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<Vec<T>> {
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let file = File::open(path).with_context(|| format!("open {}", path.display()))?;
-    let mut rows = Vec::new();
-    for (line_no, line) in BufReader::new(file).lines().enumerate() {
-        let line = line.with_context(|| format!("read {}:{}", path.display(), line_no + 1))?;
-        if line.trim().is_empty() {
-            continue;
-        }
-        rows.push(
-            serde_json::from_str::<T>(&line)
-                .with_context(|| format!("parse {}:{}", path.display(), line_no + 1))?,
-        );
-    }
-    Ok(rows)
-}
-
-fn read_leader_slot_snapshots(artifact_dir: &Path) -> Result<Vec<LeaderSlotsSnapshotArtifact>> {
-    let mut paths = fs::read_dir(artifact_dir)
-        .with_context(|| format!("read {}", artifact_dir.display()))?
-        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
-        .filter(|path| {
-            path.file_name()
-                .and_then(|name| name.to_str())
-                .map(|name| {
-                    name == "leader-slots-snapshot.json"
-                        || name.starts_with("leader-slots-snapshot-")
-                })
-                .unwrap_or(false)
-        })
-        .collect::<Vec<PathBuf>>();
-    paths.sort();
-
-    let mut snapshots = Vec::new();
-    for path in paths {
-        let bytes = fs::read(&path).with_context(|| format!("read {}", path.display()))?;
-        snapshots.push(
-            serde_json::from_slice::<LeaderSlotsSnapshotArtifact>(&bytes)
-                .with_context(|| format!("parse {}", path.display()))?,
-        );
-    }
-    Ok(snapshots)
 }
 
 fn read_manifest(artifact_dir: &Path) -> Result<Option<crate::artifacts::BenchManifest>> {
@@ -700,6 +659,7 @@ fn cost_rows_by_signature(
                 .map(|send| send.transaction_fee_lamports)
                 .or_else(|| sample.map(|sample| sample.transaction_fee_lamports))
                 .unwrap_or_else(|| base_fee_lamports.saturating_add(priority_fee_lamports));
+            let caller_observed = observed_signatures.contains(&signature);
 
             let mut route_tip_generated_lamports = 0_u64;
             let mut route_tip_landed_lamports = 0_u64;
@@ -739,8 +699,11 @@ fn cost_rows_by_signature(
                     route_tip_landed_lamports,
                     total_generated_spend_lamports: transaction_fee_lamports
                         .saturating_add(route_tip_generated_lamports),
-                    total_landed_spend_lamports: transaction_fee_lamports
-                        .saturating_add(route_tip_landed_lamports),
+                    total_landed_spend_lamports: if caller_observed {
+                        transaction_fee_lamports.saturating_add(route_tip_landed_lamports)
+                    } else {
+                        route_tip_landed_lamports
+                    },
                     generated_route_tip_count,
                     landed_route_tip_count,
                 },
@@ -859,96 +822,64 @@ fn summarize_providers(
 }
 
 fn summarize_sources(rows: &[ObservationRow]) -> Vec<SourceReportSummary> {
-    let mut first_seen_by_signature = BTreeMap::<String, DateTime<Utc>>::new();
-    for row in rows {
-        first_seen_by_signature
-            .entry(row.event.signature.clone())
-            .and_modify(|existing| {
-                if row.event.observed_at < *existing {
-                    *existing = row.event.observed_at;
-                }
-            })
-            .or_insert(row.event.observed_at);
-    }
-
-    let mut groups = BTreeMap::<String, Vec<&ObservationRow>>::new();
-    for row in rows {
-        groups
-            .entry(row.event.source_name.clone())
-            .or_default()
-            .push(row);
-    }
-    groups
-        .into_iter()
-        .map(|(source_name, rows)| {
-            let mut latencies = rows
-                .iter()
-                .filter_map(|row| row.latency_us)
-                .collect::<Vec<_>>();
-            latencies.sort_unstable();
-            let mut slot_deltas = rows
-                .iter()
-                .filter_map(|row| {
-                    Some(row.event.slot? as i64 - row.send.as_ref()?.send_slot as i64)
-                })
-                .collect::<Vec<_>>();
-            slot_deltas.sort_unstable();
-            let same_slot_count = slot_deltas.iter().filter(|delta| **delta == 0).count();
-            let mut slot_indexes = rows
-                .iter()
-                .filter_map(|row| row.event.slot_index)
-                .collect::<Vec<_>>();
-            slot_indexes.sort_unstable();
-            let mut entry_indexes = rows
-                .iter()
-                .filter_map(|row| {
-                    row.placement
-                        .as_ref()
-                        .map(|placement| placement.entry_index)
-                })
-                .collect::<Vec<_>>();
-            entry_indexes.sort_unstable();
-            let mut tx_indexes_in_entry = rows
-                .iter()
-                .filter_map(|row| {
-                    row.placement
-                        .as_ref()
-                        .map(|placement| placement.tx_index_in_entry)
-                })
-                .collect::<Vec<_>>();
-            tx_indexes_in_entry.sort_unstable();
-            let first_seen = rows
-                .iter()
-                .filter(|row| {
-                    first_seen_by_signature.get(&row.event.signature)
-                        == Some(&row.event.observed_at)
-                })
-                .count();
-            SourceReportSummary {
-                source_name,
-                count: rows.len(),
-                first_seen,
-                submit_to_observed_p50_ms: percentile_ms(&latencies, 0.50),
-                submit_to_observed_p90_ms: percentile_ms(&latencies, 0.90),
-                submit_to_observed_p99_ms: percentile_ms(&latencies, 0.99),
-                submit_to_observed_max_ms: percentile_ms(&latencies, 1.0),
-                same_slot_count,
-                same_slot_rate: ratio(same_slot_count, slot_deltas.len()),
-                landed_slot_delta_p50: percentile_i64(&slot_deltas, 0.50),
-                landed_slot_delta_p90: percentile_i64(&slot_deltas, 0.90),
-                slot_index_p50: percentile_u64(&slot_indexes, 0.50),
-                slot_index_p90: percentile_u64(&slot_indexes, 0.90),
-                entry_index_p50: percentile_u64(&entry_indexes, 0.50),
-                entry_index_p90: percentile_u64(&entry_indexes, 0.90),
-                tx_index_in_entry_p50: percentile_u64(&tx_indexes_in_entry, 0.50),
-                tx_index_in_entry_p90: percentile_u64(&tx_indexes_in_entry, 0.90),
-            }
+    let mut latencies = rows
+        .iter()
+        .filter_map(|row| row.latency_us)
+        .collect::<Vec<_>>();
+    latencies.sort_unstable();
+    let mut slot_deltas = rows
+        .iter()
+        .filter_map(|row| Some(row.event.slot? as i64 - row.send.as_ref()?.send_slot as i64))
+        .collect::<Vec<_>>();
+    slot_deltas.sort_unstable();
+    let same_slot_count = slot_deltas.iter().filter(|delta| **delta == 0).count();
+    let mut slot_indexes = rows
+        .iter()
+        .filter_map(|row| row.processed_slot_index.or(row.event.slot_index))
+        .collect::<Vec<_>>();
+    slot_indexes.sort_unstable();
+    let mut entry_indexes = rows
+        .iter()
+        .filter_map(|row| {
+            row.placement
+                .as_ref()
+                .map(|placement| placement.entry_index)
         })
-        .collect()
+        .collect::<Vec<_>>();
+    entry_indexes.sort_unstable();
+    let mut tx_indexes_in_entry = rows
+        .iter()
+        .filter_map(|row| {
+            row.placement
+                .as_ref()
+                .map(|placement| placement.tx_index_in_entry)
+        })
+        .collect::<Vec<_>>();
+    tx_indexes_in_entry.sort_unstable();
+
+    vec![SourceReportSummary {
+        source_name: "first_observed".to_string(),
+        count: rows.len(),
+        first_seen: rows.len(),
+        submit_to_observed_p50_ms: percentile_ms(&latencies, 0.50),
+        submit_to_observed_p90_ms: percentile_ms(&latencies, 0.90),
+        submit_to_observed_p99_ms: percentile_ms(&latencies, 0.99),
+        submit_to_observed_max_ms: percentile_ms(&latencies, 1.0),
+        same_slot_count,
+        same_slot_rate: ratio(same_slot_count, slot_deltas.len()),
+        landed_slot_delta_p50: percentile_i64(&slot_deltas, 0.50),
+        landed_slot_delta_p90: percentile_i64(&slot_deltas, 0.90),
+        slot_index_p50: percentile_u64(&slot_indexes, 0.50),
+        slot_index_p90: percentile_u64(&slot_indexes, 0.90),
+        entry_index_p50: percentile_u64(&entry_indexes, 0.50),
+        entry_index_p90: percentile_u64(&entry_indexes, 0.90),
+        tx_index_in_entry_p50: percentile_u64(&tx_indexes_in_entry, 0.50),
+        tx_index_in_entry_p90: percentile_u64(&tx_indexes_in_entry, 0.90),
+    }]
 }
 
 fn summarize_cohorts(rows: &[ObservationRow]) -> Vec<CohortReportSummary> {
-    let mut groups = BTreeMap::<(String, String, String), Vec<i128>>::new();
+    let mut groups = BTreeMap::<(String, String), Vec<i128>>::new();
     for row in rows {
         let Some(latency) = row.latency_us else {
             continue;
@@ -962,32 +893,26 @@ fn summarize_cohorts(rows: &[ObservationRow]) -> Vec<CohortReportSummary> {
             ("stake_bucket", row.leader.stake_bucket.as_str()),
         ] {
             groups
-                .entry((
-                    kind.to_string(),
-                    value.to_string(),
-                    row.event.source_name.clone(),
-                ))
+                .entry((kind.to_string(), value.to_string()))
                 .or_default()
                 .push(latency);
         }
     }
     let mut summaries = groups
         .into_iter()
-        .map(
-            |((cohort_kind, cohort_value, source_name), mut latencies)| {
-                latencies.sort_unstable();
-                CohortReportSummary {
-                    cohort_kind,
-                    cohort_value,
-                    source_name,
-                    count: latencies.len(),
-                    submit_to_observed_p50_ms: percentile_ms(&latencies, 0.50),
-                    submit_to_observed_p90_ms: percentile_ms(&latencies, 0.90),
-                    submit_to_observed_p99_ms: percentile_ms(&latencies, 0.99),
-                    submit_to_observed_max_ms: percentile_ms(&latencies, 1.0),
-                }
-            },
-        )
+        .map(|((cohort_kind, cohort_value), mut latencies)| {
+            latencies.sort_unstable();
+            CohortReportSummary {
+                cohort_kind,
+                cohort_value,
+                source_name: "first_observed".to_string(),
+                count: latencies.len(),
+                submit_to_observed_p50_ms: percentile_ms(&latencies, 0.50),
+                submit_to_observed_p90_ms: percentile_ms(&latencies, 0.90),
+                submit_to_observed_p99_ms: percentile_ms(&latencies, 0.99),
+                submit_to_observed_max_ms: percentile_ms(&latencies, 1.0),
+            }
+        })
         .collect::<Vec<_>>();
     summaries.sort_by(|a, b| {
         a.cohort_kind
@@ -1014,7 +939,7 @@ fn summarize_tail_events(
             Some((latency_us, row))
         })
         .collect::<Vec<_>>();
-    rows.sort_by(|a, b| b.0.cmp(&a.0));
+    rows.sort_by_key(|row| std::cmp::Reverse(row.0));
     rows.into_iter()
         .take(limit)
         .map(|(latency_us, row)| {
@@ -1290,8 +1215,8 @@ fn report_markdown(report: &ReportOutput) -> String {
     ));
 
     out.push_str("## Landing Observations\n\n");
-    out.push_str("Landing latency uses the earliest observation per transaction across configured streams. In normal RPCEdge runs this should be the deshred stream; processed metadata is only counted here when it is the first or only observation for a signature.\n\n");
-    out.push_str("| First source | Count | p50 ms | p90 ms | p99 ms | max ms | same-slot | slot delta p50 | slot index p50 | entry index p50 | tx-in-entry p50 |\n");
+    out.push_str("Landing latency uses one clock: the earliest configured receiver observation per transaction. Processed metadata supplies canonical transaction index even when another receiver was earlier.\n\n");
+    out.push_str("| Clock | Count | p50 ms | p90 ms | p99 ms | max ms | same-slot | slot delta p50 | slot index p50 | entry index p50 | tx-in-entry p50 |\n");
     out.push_str("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
     for row in &report.source_summaries {
         out.push_str(&format!(
@@ -1339,8 +1264,8 @@ fn report_markdown(report: &ReportOutput) -> String {
         "stake_bucket",
     ] {
         out.push_str(&format!("\n## Cohort: `{kind}`\n\n"));
-        out.push_str("| Value | Source | Count | p50 ms | p90 ms | p99 ms | max ms |\n");
-        out.push_str("| --- | --- | ---: | ---: | ---: | ---: | ---: |\n");
+        out.push_str("| Value | Count | p50 ms | p90 ms | p99 ms | max ms |\n");
+        out.push_str("| --- | ---: | ---: | ---: | ---: | ---: |\n");
         for row in report
             .cohort_summaries
             .iter()
@@ -1348,9 +1273,8 @@ fn report_markdown(report: &ReportOutput) -> String {
             .take(24)
         {
             out.push_str(&format!(
-                "| `{}` | `{}` | {} | {} | {} | {} | {} |\n",
+                "| `{}` | {} | {} | {} | {} | {} |\n",
                 row.cohort_value,
-                row.source_name,
                 row.count,
                 fmt_ms(row.submit_to_observed_p50_ms),
                 fmt_ms(row.submit_to_observed_p90_ms),
@@ -1412,7 +1336,7 @@ fn report_markdown(report: &ReportOutput) -> String {
 
 fn report_html(report: &ReportOutput) -> String {
     let mut out = String::new();
-    let primary = primary_source_summary(report);
+    let first_observed = first_observed_summary(report);
     let observed_ratio = ratio(
         report.totals.matched_signatures,
         report.totals.sent_transactions,
@@ -1465,19 +1389,19 @@ details{background:#fff;border:1px solid #dfe5e8;border-radius:8px;padding:14px;
         ),
         (
             "First-observed p50",
-            fmt_ms(primary.and_then(|row| row.submit_to_observed_p50_ms)),
-            primary
+            fmt_ms(first_observed.and_then(|row| row.submit_to_observed_p50_ms)),
+            first_observed
                 .map(|row| row.source_name.clone())
                 .unwrap_or_else(|| "no matched observations".to_string()),
         ),
         (
             "First-observed p90",
-            fmt_ms(primary.and_then(|row| row.submit_to_observed_p90_ms)),
+            fmt_ms(first_observed.and_then(|row| row.submit_to_observed_p90_ms)),
             "tail-weighted landing clock".to_string(),
         ),
         (
             "First-observed p99",
-            fmt_ms(primary.and_then(|row| row.submit_to_observed_p99_ms)),
+            fmt_ms(first_observed.and_then(|row| row.submit_to_observed_p99_ms)),
             "tail inspection starts here".to_string(),
         ),
         (
@@ -1492,7 +1416,7 @@ details{background:#fff;border:1px solid #dfe5e8;border-radius:8px;padding:14px;
         ),
         (
             "Same-slot observed",
-            primary
+            first_observed
                 .map(|row| {
                     format!(
                         "{} / {:.1}%",
@@ -1505,7 +1429,7 @@ details{background:#fff;border:1px solid #dfe5e8;border-radius:8px;padding:14px;
         ),
         (
             "Landed slot delta p90",
-            fmt_i64(primary.and_then(|row| row.landed_slot_delta_p90)),
+            fmt_i64(first_observed.and_then(|row| row.landed_slot_delta_p90)),
             "landed slot minus send slot".to_string(),
         ),
         (
@@ -1556,8 +1480,8 @@ details{background:#fff;border:1px solid #dfe5e8;border-radius:8px;padding:14px;
     ));
     out.push_str("</tbody></table></div></section>");
 
-    out.push_str("<section class=\"section\"><h2>Landing Observations</h2><p class=\"muted\">Landing latency uses the earliest observation per transaction across configured streams. Processed metadata is not forced to be the timing source; it is used for transaction index when available.</p>");
-    out.push_str("<div class=\"table-wrap\"><table><thead><tr><th>First source</th><th>Count</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>max ms</th><th>same-slot</th><th>slot delta p50</th><th>slot delta p90</th><th>slot index p50</th><th>entry index p50</th><th>tx-in-entry p50</th></tr></thead><tbody>");
+    out.push_str("<section class=\"section\"><h2>Landing Observations</h2><p class=\"muted\">Landing latency uses one clock: the earliest configured receiver observation per transaction. Processed metadata supplies canonical transaction index even when another receiver was earlier.</p>");
+    out.push_str("<div class=\"table-wrap\"><table><thead><tr><th>Clock</th><th>Count</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>max ms</th><th>same-slot</th><th>slot delta p50</th><th>slot delta p90</th><th>slot index p50</th><th>entry index p50</th><th>tx-in-entry p50</th></tr></thead><tbody>");
     for row in &report.source_summaries {
         out.push_str(&format!(
             "<tr><td class=\"left\"><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{} / {:.1}%</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
@@ -1606,7 +1530,7 @@ details{background:#fff;border:1px solid #dfe5e8;border-radius:8px;padding:14px;
         "stake_bucket",
     ] {
         out.push_str(&format!(
-            "<h2><code>{}</code></h2><div class=\"table-wrap\"><table><thead><tr><th>Value</th><th>Source</th><th>Count</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>max ms</th></tr></thead><tbody>",
+            "<h2><code>{}</code></h2><div class=\"table-wrap\"><table><thead><tr><th>Value</th><th>Count</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>max ms</th></tr></thead><tbody>",
             html_escape(kind)
         ));
         for row in report
@@ -1616,9 +1540,8 @@ details{background:#fff;border:1px solid #dfe5e8;border-radius:8px;padding:14px;
             .take(24)
         {
             out.push_str(&format!(
-                "<tr><td class=\"left\"><code>{}</code></td><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                "<tr><td class=\"left\"><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
                 html_escape(&row.cohort_value),
-                html_escape(&row.source_name),
                 row.count,
                 fmt_ms(row.submit_to_observed_p50_ms),
                 fmt_ms(row.submit_to_observed_p90_ms),
@@ -1677,7 +1600,7 @@ details{background:#fff;border:1px solid #dfe5e8;border-radius:8px;padding:14px;
     out
 }
 
-fn primary_source_summary(report: &ReportOutput) -> Option<&SourceReportSummary> {
+fn first_observed_summary(report: &ReportOutput) -> Option<&SourceReportSummary> {
     report.source_summaries.iter().max_by(|a, b| {
         a.first_seen
             .cmp(&b.first_seen)
@@ -2128,6 +2051,9 @@ mod tests {
 
         let report = generate_report(root).expect("report");
         assert_eq!(report.totals.matched_signatures, 1);
+        assert_eq!(report.source_summaries.len(), 1);
+        assert_eq!(report.source_summaries[0].source_name, "first_observed");
+        assert_eq!(report.source_summaries[0].slot_index_p50, Some(42));
         assert_eq!(report.tail_events.len(), 1);
         let tail = &report.tail_events[0];
         assert_eq!(tail.source_name, "deshred");
@@ -2199,6 +2125,8 @@ mod tests {
         assert_eq!(report.totals.sent_transactions, 1);
         assert_eq!(report.totals.matched_signatures, 0);
         assert_eq!(report.totals.unobserved_signatures, 1);
+        assert_eq!(report.cost_summary.total_transaction_fee_lamports, 5_000);
+        assert_eq!(report.cost_summary.total_landed_spend_lamports, 0);
         assert_eq!(report.provider_summaries[0].count, 2);
         assert_eq!(report.unobserved_events.len(), 1);
         let unobserved = &report.unobserved_events[0];

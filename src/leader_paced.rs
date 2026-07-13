@@ -1,6 +1,8 @@
 use crate::{
     adapters::{build_adapter, ProviderAdapter, RouteSelection, SendContext},
-    artifacts::{summarize, ArtifactWriter, BenchManifest, BenchSample, ManifestProvider},
+    artifacts::{
+        summarize, ArtifactWriter, BenchManifest, BenchSample, BenchSampleContext, ManifestProvider,
+    },
     collectors::{collect_rpcedge_observations, CollectRunOutput, RpcEdgeCollectConfig},
     config::{BenchConfig, ProviderSpec},
     leader_slots::{
@@ -16,6 +18,7 @@ use crate::{
         build_transaction_with_blockhash, load_keypair, transaction_fee_lamports, BenchTx,
         TxBuildConfig,
     },
+    url::redact_endpoint,
 };
 use anyhow::{bail, Context, Result};
 use chrono::{DateTime, SecondsFormat, Utc};
@@ -276,6 +279,13 @@ struct PendingLeaderTx {
     compute_unit_price_microlamports: u64,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct ResendAttempt {
+    index: usize,
+    attempts: usize,
+    interval: Duration,
+}
+
 pub async fn run_leader_paced(
     config: BenchConfig,
     options: LeaderPacedOptions,
@@ -313,6 +323,12 @@ pub async fn run_leader_paced(
         .test_id
         .clone()
         .unwrap_or_else(default_leader_paced_test_id);
+    let max_spend_lamports = config
+        .max_spend_lamports
+        .context("max_spend_lamports is required for every transaction-producing run")?;
+    if max_spend_lamports == 0 {
+        bail!("max_spend_lamports must be greater than zero");
+    }
     let payers = load_payers(options.route_strategy, &config)?;
     let payer_pubkeys = payers
         .iter()
@@ -340,18 +356,13 @@ pub async fn run_leader_paced(
     }
 
     let mut leader_lookup = LeaderMetadataLookup::default();
-    let leader_slots_snapshot_path = if options.leader_slots.is_some()
-        && matches!(options.trigger, LeaderPacedTrigger::RpcPoll)
+    let leader_slots_snapshot_path = if let (Some(leader_slots), LeaderPacedTrigger::RpcPoll) =
+        (&options.leader_slots, &options.trigger)
     {
         let start_slot = rpc
             .get_slot()
             .context("get slot for getLeaderSlots snapshot")?;
-        let artifact = refresh_leader_slots(
-            options.leader_slots.as_ref().expect("checked some"),
-            start_slot,
-            &writer.run_dir,
-        )
-        .await?;
+        let artifact = refresh_leader_slots(leader_slots, start_slot, &writer.run_dir).await?;
         leader_lookup.extend_from_artifact(&artifact);
         write_leader_slots_snapshot(&writer.run_dir, &artifact)?;
         Some(writer.run_dir.join("leader-slots-snapshot.json"))
@@ -517,13 +528,12 @@ pub async fn run_leader_paced(
                         };
                         let next_transaction_fee_total = transaction_fee_spent
                             .saturating_add(transaction_fee_lamports(&tx_config));
-                        if let Some(max) = config.max_spend_lamports {
-                            if next_transaction_fee_total > max {
-                                bail!(
+                        if next_transaction_fee_total > max_spend_lamports {
+                            bail!(
                                 "spend cap exceeded before tx {iteration}: next_transaction_fee_total={} max={max}",
-                                next_transaction_fee_total
+                                next_transaction_fee_total,
+                                max = max_spend_lamports,
                             );
-                            }
                         }
 
                         let tx = build_transaction_with_blockhash(
@@ -549,95 +559,97 @@ pub async fn run_leader_paced(
                     }
                 }
 
-                let send_batch_at = Utc::now();
-                for pending_tx in &pending {
-                    let event = LeaderSendEvent {
-                        schema_version: 4,
-                        test_id: test_id.clone(),
-                        iteration: pending_tx.iteration,
-                        signature: pending_tx.tx.signature.to_string(),
-                        payer_pubkey: Some(pending_tx.payer_pubkey.clone()),
-                        recent_blockhash: Some(pending_tx.recent_blockhash.clone()),
-                        comparison_group_id: pending_tx.comparison_group_id.clone(),
-                        policy_arm: pending_tx.policy_arm.clone(),
-                        policy_arm_index: pending_tx.policy_arm_index,
-                        leader_identity: leader_run.leader_identity.clone(),
-                        leader_run_start_slot: leader_run.start_slot,
-                        leader_run_end_slot: leader_run.end_slot,
-                        send_slot,
-                        sent_at: send_batch_at,
-                        trigger_source: trigger_source.clone(),
-                        slot_signal_status: Some(slot_signal.status.clone()),
-                        slot_signal_observed_at: Some(slot_signal.observed_at),
-                        leader_client_family: pending_tx.leader_metadata.client_family.clone(),
-                        leader_software_client: pending_tx.leader_metadata.software_client.clone(),
-                        leader_software_client_id: pending_tx.leader_metadata.software_client_id,
-                        leader_network_path_class: pending_tx.leader_metadata.network_path_class,
-                        leader_network_path_verified: pending_tx
-                            .leader_metadata
-                            .network_path_verified,
-                        leader_network_path_observed_at_unix_ms: pending_tx
-                            .leader_metadata
-                            .network_path_observed_at_unix_ms,
-                        leader_network_path_rtt_us: pending_tx.leader_metadata.network_path_rtt_us,
-                        leader_stake: pending_tx.leader_metadata.stake,
-                        leader_region: pending_tx.leader_metadata.region.clone(),
-                        leader_city: pending_tx.leader_metadata.city.clone(),
-                        leader_data_center_key: pending_tx.leader_metadata.data_center_key.clone(),
-                        route_policy: pending_tx
-                            .route_selection
-                            .as_ref()
-                            .map(|selection| selection.policy.clone()),
-                        selected_routes: pending_tx
-                            .route_selection
-                            .as_ref()
-                            .map(|selection| selection.routes.clone())
-                            .unwrap_or_default(),
-                        compute_unit_limit: pending_tx.compute_unit_limit,
-                        compute_unit_price_microlamports: pending_tx
-                            .compute_unit_price_microlamports,
-                        base_fee_lamports: pending_tx.tx.base_fee_lamports,
-                        priority_fee_lamports: pending_tx.tx.priority_fee_lamports,
-                        transaction_fee_lamports: pending_tx.tx.transaction_fee_lamports,
-                    };
-                    serde_json::to_writer(&mut leader_sends, &event)
-                        .context("write leader send event")?;
-                    leader_sends
-                        .write_all(b"\n")
-                        .context("write leader send newline")?;
-                    sends.push(event);
-                }
-                leader_sends.flush().context("flush leader send events")?;
-
                 let chunk_size = if options.route_strategy.is_paired() {
                     pending.len().max(1)
                 } else {
                     options.leader_run_concurrency
                 };
                 for chunk in pending.chunks(chunk_size) {
+                    let send_batch_at = Utc::now();
+                    for pending_tx in chunk {
+                        let event = LeaderSendEvent {
+                            schema_version: 4,
+                            test_id: test_id.clone(),
+                            iteration: pending_tx.iteration,
+                            signature: pending_tx.tx.signature.to_string(),
+                            payer_pubkey: Some(pending_tx.payer_pubkey.clone()),
+                            recent_blockhash: Some(pending_tx.recent_blockhash.clone()),
+                            comparison_group_id: pending_tx.comparison_group_id.clone(),
+                            policy_arm: pending_tx.policy_arm.clone(),
+                            policy_arm_index: pending_tx.policy_arm_index,
+                            leader_identity: leader_run.leader_identity.clone(),
+                            leader_run_start_slot: leader_run.start_slot,
+                            leader_run_end_slot: leader_run.end_slot,
+                            send_slot,
+                            sent_at: send_batch_at,
+                            trigger_source: trigger_source.clone(),
+                            slot_signal_status: Some(slot_signal.status.clone()),
+                            slot_signal_observed_at: Some(slot_signal.observed_at),
+                            leader_client_family: pending_tx.leader_metadata.client_family.clone(),
+                            leader_software_client: pending_tx
+                                .leader_metadata
+                                .software_client
+                                .clone(),
+                            leader_software_client_id: pending_tx
+                                .leader_metadata
+                                .software_client_id,
+                            leader_network_path_class: pending_tx
+                                .leader_metadata
+                                .network_path_class,
+                            leader_network_path_verified: pending_tx
+                                .leader_metadata
+                                .network_path_verified,
+                            leader_network_path_observed_at_unix_ms: pending_tx
+                                .leader_metadata
+                                .network_path_observed_at_unix_ms,
+                            leader_network_path_rtt_us: pending_tx
+                                .leader_metadata
+                                .network_path_rtt_us,
+                            leader_stake: pending_tx.leader_metadata.stake,
+                            leader_region: pending_tx.leader_metadata.region.clone(),
+                            leader_city: pending_tx.leader_metadata.city.clone(),
+                            leader_data_center_key: pending_tx
+                                .leader_metadata
+                                .data_center_key
+                                .clone(),
+                            route_policy: pending_tx
+                                .route_selection
+                                .as_ref()
+                                .map(|selection| selection.policy.clone()),
+                            selected_routes: pending_tx
+                                .route_selection
+                                .as_ref()
+                                .map(|selection| selection.routes.clone())
+                                .unwrap_or_default(),
+                            compute_unit_limit: pending_tx.compute_unit_limit,
+                            compute_unit_price_microlamports: pending_tx
+                                .compute_unit_price_microlamports,
+                            base_fee_lamports: pending_tx.tx.base_fee_lamports,
+                            priority_fee_lamports: pending_tx.tx.priority_fee_lamports,
+                            transaction_fee_lamports: pending_tx.tx.transaction_fee_lamports,
+                        };
+                        serde_json::to_writer(&mut leader_sends, &event)
+                            .context("write leader send event")?;
+                        leader_sends
+                            .write_all(b"\n")
+                            .context("write leader send newline")?;
+                        sends.push(event);
+                    }
+                    leader_sends.flush().context("flush leader send events")?;
+
                     for resend_attempt_index in 0..options.resend_attempts {
                         let futures = chunk.iter().map(|pending_tx| {
                             send_one_transaction_to_providers(
                                 providers.as_slice(),
                                 test_id.as_str(),
-                                &pending_tx.tx,
+                                pending_tx,
                                 send_batch_at,
-                                pending_tx.iteration,
                                 timeout,
-                                pending_tx.route_selection.clone(),
-                                pending_tx.provider_index,
-                                pending_tx.leader_metadata.clone(),
-                                pending_tx.comparison_group_id.clone(),
-                                pending_tx.policy_arm.clone(),
-                                pending_tx.policy_arm_index,
-                                pending_tx.compute_unit_limit,
-                                pending_tx.compute_unit_price_microlamports,
-                                pending_tx.tx.base_fee_lamports,
-                                pending_tx.tx.priority_fee_lamports,
-                                pending_tx.tx.transaction_fee_lamports,
-                                resend_attempt_index,
-                                options.resend_attempts,
-                                options.resend_interval,
+                                ResendAttempt {
+                                    index: resend_attempt_index,
+                                    attempts: options.resend_attempts,
+                                    interval: options.resend_interval,
+                                },
                             )
                         });
                         for tx_samples in join_all(futures).await {
@@ -691,7 +703,7 @@ pub async fn run_leader_paced(
         schema_version: 3,
         test_id: test_id.clone(),
         generated_at: Utc::now(),
-        rpc_url_label: redact_url(&config.rpc_url),
+        rpc_url_label: redact_endpoint(&config.rpc_url),
         keypair_pubkey: payer_pubkeys.first().cloned().unwrap_or_default(),
         keypair_pubkeys: payer_pubkeys,
         count: sends.len(),
@@ -779,69 +791,57 @@ async fn refresh_leader_slots(
 async fn send_one_transaction_to_providers(
     providers: &[Box<dyn ProviderAdapter>],
     test_id: &str,
-    tx: &BenchTx,
+    pending: &PendingLeaderTx,
     sent_at: DateTime<Utc>,
-    iteration: usize,
     timeout: Duration,
-    route_selection: Option<RouteSelection>,
-    provider_index: Option<usize>,
-    leader_metadata: LeaderMetadata,
-    comparison_group_id: Option<String>,
-    policy_arm: Option<String>,
-    policy_arm_index: Option<u16>,
-    compute_unit_limit: u32,
-    compute_unit_price_microlamports: u64,
-    base_fee_lamports: u64,
-    priority_fee_lamports: u64,
-    transaction_fee_lamports: u64,
-    resend_attempt_index: usize,
-    resend_attempts: usize,
-    resend_interval: Duration,
+    resend: ResendAttempt,
 ) -> Vec<BenchSample> {
     let started = Instant::now();
     let ctx = SendContext {
         test_id: test_id.to_string(),
-        iteration,
-        signature: tx.signature.to_string(),
-        tx_base64: tx.base64.clone(),
+        iteration: pending.iteration,
+        signature: pending.tx.signature.to_string(),
+        tx_base64: pending.tx.base64.clone(),
         timeout,
-        route_selection: route_selection.clone(),
-        leader_client_family: leader_metadata.client_family.clone(),
+        route_selection: pending.route_selection.clone(),
+        leader_client_family: pending.leader_metadata.client_family.clone(),
     };
-    let selected_providers = match provider_index {
+    let selected_providers = match pending.provider_index {
         Some(index) => providers.get(index).into_iter().collect::<Vec<_>>(),
         None => providers.iter().collect::<Vec<_>>(),
     };
     let futures = selected_providers
         .into_iter()
-        .map(|provider| provider.send_transaction(&tx.raw, &ctx));
+        .map(|provider| provider.send_transaction(&pending.tx.raw, &ctx));
     let acks = join_all(futures).await;
     let client_finished_at = Utc::now();
     let client_ack_latency_us = started.elapsed().as_micros();
     acks.into_iter()
         .map(|ack| {
             BenchSample::from_ack(
-                test_id,
-                iteration,
-                tx.signature.to_string(),
-                comparison_group_id.clone(),
-                policy_arm.clone(),
-                policy_arm_index,
-                sent_at,
-                client_finished_at,
-                client_ack_latency_us,
-                route_selection.as_ref(),
-                leader_metadata.client_family.clone(),
-                leader_metadata.software_client.clone(),
-                leader_metadata.software_client_id,
-                compute_unit_limit,
-                compute_unit_price_microlamports,
-                base_fee_lamports,
-                priority_fee_lamports,
-                transaction_fee_lamports,
-                Some(resend_attempt_index as u16),
-                Some(resend_attempts as u16),
-                Some(resend_interval.as_millis() as u64),
+                BenchSampleContext {
+                    test_id: test_id.to_string(),
+                    iteration: pending.iteration,
+                    signature: pending.tx.signature.to_string(),
+                    comparison_group_id: pending.comparison_group_id.clone(),
+                    policy_arm: pending.policy_arm.clone(),
+                    policy_arm_index: pending.policy_arm_index,
+                    client_started_at: sent_at,
+                    client_finished_at,
+                    client_ack_latency_us,
+                    route_selection: pending.route_selection.clone(),
+                    leader_client_family: pending.leader_metadata.client_family.clone(),
+                    leader_software_client: pending.leader_metadata.software_client.clone(),
+                    leader_software_client_id: pending.leader_metadata.software_client_id,
+                    compute_unit_limit: pending.compute_unit_limit,
+                    compute_unit_price_microlamports: pending.compute_unit_price_microlamports,
+                    base_fee_lamports: pending.tx.base_fee_lamports,
+                    priority_fee_lamports: pending.tx.priority_fee_lamports,
+                    transaction_fee_lamports: pending.tx.transaction_fee_lamports,
+                    resend_attempt_index: Some(resend.index as u16),
+                    resend_attempts: Some(resend.attempts as u16),
+                    resend_interval_ms: Some(resend.interval.as_millis() as u64),
+                },
                 ack,
             )
         })
@@ -1323,7 +1323,7 @@ fn is_jito_software_client(leader_metadata: &LeaderMetadata) -> bool {
 }
 
 fn is_harmonic_software_client(leader_metadata: &LeaderMetadata) -> bool {
-    matches!(leader_metadata.software_client_id, Some(9 | 10 | 11))
+    matches!(leader_metadata.software_client_id, Some(9..=11))
         || leader_metadata
             .software_client
             .as_deref()
@@ -1596,26 +1596,6 @@ fn default_leader_paced_test_id() -> String {
         Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
     )
     .replace(':', "")
-}
-
-fn redact_url(url: &str) -> String {
-    if let Ok(mut parsed) = reqwest::Url::parse(url) {
-        let _ = parsed.set_password(None);
-        if !parsed.username().is_empty() {
-            let _ = parsed.set_username("redacted");
-        }
-        let query = parsed.query().map(str::to_string);
-        if query
-            .as_deref()
-            .map(|q| q.contains("api") || q.contains("key") || q.contains("token"))
-            .unwrap_or(false)
-        {
-            parsed.set_query(Some("redacted=true"));
-        }
-        parsed.to_string()
-    } else {
-        url.to_string()
-    }
 }
 
 #[cfg(test)]

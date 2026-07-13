@@ -278,10 +278,10 @@ the comparison: arm 0 is baseline, arm 1 is candidate, and every reported delta
 is `candidate - baseline`. Put public Internet first and DoubleZero second so a
 negative latency delta means DoubleZero was observed sooner.
 
-The output selects the earliest matched receiver observation for each signature
-and measures first-observed, landed-slot, and block-position outcomes. It does
-not measure packet-arrival time inside the leader TPU. Provider ACK and
-receiver-specific timing remain diagnostics.
+The output selects the earliest configured receiver observation for each
+signature. Every timing and block-placement delta requires a complete pair
+observed in the same slot. Different-slot and one-sided outcomes appear only in
+coverage. The report does not measure packet-arrival time inside the leader TPU.
 
 Generate the complete DoubleZero-versus-public output after the run:
 
@@ -289,11 +289,12 @@ Generate the complete DoubleZero-versus-public output after the run:
 scripts/report-doublezero-public.sh artifacts/<test-id>
 ```
 
-The script runs the standard report and paired comparison, then derives one
-additional same-slot placement report from the saved entry history. It writes
-`doublezero-public-report.md`, `poh-placement.json`, and `poh-placement.md`
-under the comparison directory. This reporting step does not change live
-collection or transaction submission.
+The script validates the artifact and invokes the standard paired report writer.
+It writes one public report, `index.html`, plus `summary.json` and
+`paired-rows.json` as machine-readable evidence. The same typed analysis
+produces every output; the script contains no statistical calculations. PoH
+placement is derived offline from the saved entry history. Reporting does not
+change collection or transaction submission.
 
 Leader-paced outputs add:
 

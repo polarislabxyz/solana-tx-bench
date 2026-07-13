@@ -361,18 +361,26 @@ arm 1 = candidate
 delta = candidate - baseline
 ```
 
-Negative latency is a candidate win. One-sided and unobserved groups are
-reported separately from complete-pair wins. These are matched landing and
+Negative deltas favor the candidate. First-observation time, processed
+transaction index, entry index, and PoH interval are calculated only for pairs
+observed in the same slot. Different-slot, one-sided, and unobserved groups are
+coverage outcomes, not performance samples. These are matched landing and
 stream-observation outcomes, not timestamps taken at the remote TPU socket.
 
 For the Frankfurt DoubleZero/public experiment, run
 `scripts/report-doublezero-public.sh artifacts/<test-id>` after collection.
-The script compares only processed pairs recorded in the same slot. It uses the
-existing `entry-placements.ndjson` join for entry order, then reads the saved
-entry history from index zero and counts zero-transaction entries preceding
-each transaction entry. In Solana, those empty entries are PoH ticks. A gap in
-the entry sequence excludes that pair from the tick result instead of producing
-an estimated value.
+The script performs validation only. The paired report writer chooses the
+earliest configured receiver observation per signature, joins processed
+metadata for canonical transaction index, joins `entry-placements.ndjson` for
+entry index, then streams the saved entry history from index zero and counts
+zero-transaction entries preceding each transaction entry. In Solana, those
+empty entries are PoH ticks. A gap in the entry sequence excludes that pair
+from the tick result instead of producing an estimated value.
+
+The public `index.html` and machine-readable `summary.json` use the same typed
+summary. Overall, city, distance, and validator tables report the same four
+measures with candidate/same/baseline counts and delta p50/p95/p99. Small
+validator cohorts remain visible but are descriptive only.
 
 The resulting tick count is block-production placement: it shows how many PoH
 ticks the leader recorded before the transaction's entry. It does not show when
@@ -496,8 +504,8 @@ because trading systems care more about bad windows than headline mean latency.
 For `tpu_quic_only` versus `client_aware`, report both raw landing quality and
 cost-normalized deltas:
 
-- deshred submit-to-observed p50/p90/p99;
-- processed submit-to-observed p50/p90/p99;
+- first-observation submit-to-observed p50/p90/p99, after selecting the
+  earliest configured receiver per signature;
 - landed slot delta p50/p90;
 - processed `slot_index` p50/p90/p99;
 - observed success ratio;
@@ -563,11 +571,13 @@ Only use the performance score for runs that share:
 If those conditions do not hold, treat the table as descriptive telemetry, not
 a provider ranking.
 
-## Matched Observation Reports
+## Receiver Collection
 
-The core benchmark uses matched-signature comparisons: send
-or observe the same transaction stream from multiple sources, then report which
-source saw each signature first.
+The benchmark collects multiple observation streams and matches them by
+transaction signature. These streams are redundant clocks for the same landing
+outcome. Sender and route reports select the earliest event per signature;
+they never rank deshred against processed gRPC or publish one latency row per
+receiver.
 
 The first live collector is deliberately narrow:
 
@@ -583,7 +593,8 @@ RPCEDGE_GRPC_URL=...
 YELLOWSTONE_X_TOKEN=...
 ```
 
-Good matched-observation outputs:
+Low-level receiver diagnostics may include the following for collector
+troubleshooting, but these are not sender benchmark results:
 
 - matched transaction count;
 - unmatched count per source;
@@ -599,10 +610,11 @@ Observation events include the stable join key: `signature`.
 - Provider ACK latency is not landing latency and is not the benchmark result.
 - Accepted by a provider does not mean landed.
 - Lowest ACK provider is not always best landed provider.
-- The primary benchmark report is matched processed/deshred observation.
+- The primary benchmark clock is the earliest configured receiver observation
+  for each signature.
 - Provider-specific fees, tips, and preflight behavior must be documented per
   adapter.
 - Results should state transaction count, rate, priority fee, provider config,
   cluster, and run time.
-- Provider comparison claims should state whether they are ACK-only,
-  confirmation-based, processed-observation-based, or first-shred/deshred-based.
+- Provider comparison claims must state the configured receivers and that the
+  earliest matched event per signature supplies the observation clock.

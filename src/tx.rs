@@ -11,6 +11,8 @@ use solana_sdk::{
 };
 use solana_system_interface::instruction as system_instruction;
 use std::path::Path;
+#[cfg(unix)]
+use std::{fs, os::unix::fs::PermissionsExt};
 
 #[derive(Debug, Clone)]
 pub struct TxBuildConfig {
@@ -32,6 +34,20 @@ pub struct BenchTx {
 }
 
 pub fn load_keypair(path: &Path) -> Result<Keypair> {
+    #[cfg(unix)]
+    {
+        let mode = fs::metadata(path)
+            .with_context(|| format!("read keypair metadata {}", path.display()))?
+            .permissions()
+            .mode();
+        if mode & 0o077 != 0 {
+            bail!(
+                "keypair permissions must not allow group or other access: {} mode={:o}",
+                path.display(),
+                mode & 0o777
+            );
+        }
+    }
     read_keypair_file(path).map_err(|err| anyhow::anyhow!("read keypair {}: {err}", path.display()))
 }
 
@@ -210,5 +226,19 @@ mod tests {
         assert_eq!(cost.priority_fee_lamports, 198);
         assert_eq!(cost.transaction_fee_lamports, 5_198);
         assert_eq!(crate::cost::priority_fee_lamports(660, 300_000), 198);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn keypair_loader_rejects_group_or_other_access() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("payer.json");
+        fs::write(&path, "[]").expect("keypair placeholder");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).expect("permissions");
+
+        let error = load_keypair(&path).expect_err("insecure permissions must fail");
+        assert!(error.to_string().contains("keypair permissions"));
     }
 }

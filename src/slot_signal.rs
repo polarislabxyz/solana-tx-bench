@@ -81,14 +81,15 @@ async fn collect_slots_once(
 }
 
 fn slot_request() -> SubscribeRequest {
-    let mut request = SubscribeRequest::default();
-    request.slots = HashMap::from([(
-        "slots".to_string(),
-        SubscribeRequestFilterSlots {
-            filter_by_commitment: Some(false),
-            interslot_updates: Some(true),
-        },
-    )]);
-    request.commitment = Some(CommitmentLevel::Processed as i32);
-    request
+    SubscribeRequest {
+        slots: HashMap::from([(
+            "slots".to_string(),
+            SubscribeRequestFilterSlots {
+                filter_by_commitment: Some(false),
+                interslot_updates: Some(true),
+            },
+        )]),
+        commitment: Some(CommitmentLevel::Processed as i32),
+        ..SubscribeRequest::default()
+    }
 }

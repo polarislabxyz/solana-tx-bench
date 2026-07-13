@@ -1,3 +1,4 @@
+use crate::url::redact_endpoint;
 use anyhow::{bail, Context, Result};
 use chrono::{DateTime, Utc};
 use reqwest::header::{HeaderMap, HeaderValue};
@@ -55,7 +56,12 @@ pub async fn capture_leader_slots_snapshot(
         .json(&payload)
         .send()
         .await
-        .with_context(|| format!("post getLeaderSlots to {}", redact_url(&config.rpc_url)))?;
+        .with_context(|| {
+            format!(
+                "post getLeaderSlots to {}",
+                redact_endpoint(&config.rpc_url)
+            )
+        })?;
     let status = response.status();
     let body = response
         .json::<Value>()
@@ -72,7 +78,7 @@ pub async fn capture_leader_slots_snapshot(
     Ok(LeaderSlotsSnapshotArtifact {
         schema_version: 1,
         fetched_at: Utc::now(),
-        rpc_url_label: redact_url(&config.rpc_url),
+        rpc_url_label: redact_endpoint(&config.rpc_url),
         start_slot,
         limit: config.lookahead_slots,
         response: body,
@@ -88,15 +94,6 @@ pub fn write_leader_slots_snapshot(
         serde_json::to_vec_pretty(artifact)?,
     )
     .context("write leader-slots-snapshot.json")
-}
-
-fn redact_url(url: &str) -> String {
-    if let Ok(mut parsed) = reqwest::Url::parse(url) {
-        parsed.set_query(None);
-        parsed.to_string()
-    } else {
-        url.to_string()
-    }
 }
 
 #[cfg(test)]

@@ -1,4 +1,5 @@
 use crate::adapters::{ProviderAck, ProviderKind, RouteResultAck, RouteSelection};
+use anyhow::{bail, Context};
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -100,45 +101,48 @@ pub struct BenchSample {
     pub route_results_complete: Option<bool>,
 }
 
+#[derive(Debug, Clone)]
+pub struct BenchSampleContext {
+    pub test_id: String,
+    pub iteration: usize,
+    pub signature: String,
+    pub comparison_group_id: Option<String>,
+    pub policy_arm: Option<String>,
+    pub policy_arm_index: Option<u16>,
+    pub client_started_at: DateTime<Utc>,
+    pub client_finished_at: DateTime<Utc>,
+    pub client_ack_latency_us: u128,
+    pub route_selection: Option<RouteSelection>,
+    pub leader_client_family: Option<String>,
+    pub leader_software_client: Option<String>,
+    pub leader_software_client_id: Option<u16>,
+    pub compute_unit_limit: u32,
+    pub compute_unit_price_microlamports: u64,
+    pub base_fee_lamports: u64,
+    pub priority_fee_lamports: u64,
+    pub transaction_fee_lamports: u64,
+    pub resend_attempt_index: Option<u16>,
+    pub resend_attempts: Option<u16>,
+    pub resend_interval_ms: Option<u64>,
+}
+
 impl BenchSample {
-    pub fn from_ack(
-        test_id: &str,
-        iteration: usize,
-        signature: String,
-        comparison_group_id: Option<String>,
-        policy_arm: Option<String>,
-        policy_arm_index: Option<u16>,
-        client_started_at: DateTime<Utc>,
-        client_finished_at: DateTime<Utc>,
-        client_ack_latency_us: u128,
-        route_selection: Option<&RouteSelection>,
-        leader_client_family: Option<String>,
-        leader_software_client: Option<String>,
-        leader_software_client_id: Option<u16>,
-        compute_unit_limit: u32,
-        compute_unit_price_microlamports: u64,
-        base_fee_lamports: u64,
-        priority_fee_lamports: u64,
-        transaction_fee_lamports: u64,
-        resend_attempt_index: Option<u16>,
-        resend_attempts: Option<u16>,
-        resend_interval_ms: Option<u64>,
-        ack: ProviderAck,
-    ) -> Self {
+    pub fn from_ack(context: BenchSampleContext, ack: ProviderAck) -> Self {
+        let route_selection = context.route_selection.as_ref();
         Self {
             schema_version: 5,
-            test_id: test_id.to_string(),
-            iteration,
-            signature,
-            comparison_group_id,
-            policy_arm,
-            policy_arm_index,
+            test_id: context.test_id,
+            iteration: context.iteration,
+            signature: context.signature,
+            comparison_group_id: context.comparison_group_id,
+            policy_arm: context.policy_arm,
+            policy_arm_index: context.policy_arm_index,
             provider_name: ack.provider_name,
             provider_kind: ack.provider_kind,
             accepted: ack.accepted,
-            client_started_at,
-            client_finished_at,
-            client_ack_latency_us,
+            client_started_at: context.client_started_at,
+            client_finished_at: context.client_finished_at,
+            client_ack_latency_us: context.client_ack_latency_us,
             provider_send_started_at: ack.send_started_at,
             provider_send_finished_at: ack.send_finished_at,
             provider_ack_latency_us: ack.ack_latency_us,
@@ -147,22 +151,22 @@ impl BenchSample {
             status_code: ack.status_code,
             error_class: ack.error_class,
             error: ack.error,
-            resend_attempt_index,
-            resend_attempts,
-            resend_interval_ms,
+            resend_attempt_index: context.resend_attempt_index,
+            resend_attempts: context.resend_attempts,
+            resend_interval_ms: context.resend_interval_ms,
             route_policy: route_selection.map(|selection| selection.policy.clone()),
             route_mode: route_selection.map(|selection| selection.mode.as_wire().to_string()),
             selected_routes: route_selection
                 .map(|selection| selection.routes.clone())
                 .unwrap_or_default(),
-            leader_client_family,
-            leader_software_client,
-            leader_software_client_id,
-            compute_unit_limit,
-            compute_unit_price_microlamports,
-            base_fee_lamports,
-            priority_fee_lamports,
-            transaction_fee_lamports,
+            leader_client_family: context.leader_client_family,
+            leader_software_client: context.leader_software_client,
+            leader_software_client_id: context.leader_software_client_id,
+            compute_unit_limit: context.compute_unit_limit,
+            compute_unit_price_microlamports: context.compute_unit_price_microlamports,
+            base_fee_lamports: context.base_fee_lamports,
+            priority_fee_lamports: context.priority_fee_lamports,
+            transaction_fee_lamports: context.transaction_fee_lamports,
             route_results: ack.route_results,
             route_results_complete: ack.route_results_complete,
         }
@@ -201,9 +205,24 @@ pub struct ArtifactWriter {
 
 impl ArtifactWriter {
     pub fn create(root: &Path, test_id: &str) -> anyhow::Result<Self> {
+        validate_test_id(test_id)?;
         let run_dir = root.join(test_id);
-        fs::create_dir_all(&run_dir)?;
-        let samples = BufWriter::new(File::create(run_dir.join("samples.ndjson"))?);
+        if run_dir.exists()
+            && fs::read_dir(&run_dir)
+                .with_context(|| format!("read {}", run_dir.display()))?
+                .next()
+                .is_some()
+        {
+            bail!(
+                "artifact directory already exists and is not empty: {}",
+                run_dir.display()
+            );
+        }
+        fs::create_dir_all(&run_dir).with_context(|| format!("create {}", run_dir.display()))?;
+        let samples = BufWriter::new(
+            File::create(run_dir.join("samples.ndjson"))
+                .with_context(|| format!("create {}/samples.ndjson", run_dir.display()))?,
+        );
         Ok(Self { run_dir, samples })
     }
 
@@ -228,6 +247,18 @@ impl ArtifactWriter {
         fs::write(self.run_dir.join("summary.md"), summary_markdown(summary))?;
         Ok(self.run_dir)
     }
+}
+
+fn validate_test_id(test_id: &str) -> anyhow::Result<()> {
+    let path = Path::new(test_id);
+    let is_single_normal_component = matches!(
+        path.components().collect::<Vec<_>>().as_slice(),
+        [std::path::Component::Normal(_)]
+    );
+    if test_id.trim().is_empty() || !is_single_normal_component {
+        bail!("test_id must be one non-empty path component");
+    }
+    Ok(())
 }
 
 pub fn summarize(test_id: &str, samples: &[BenchSample]) -> BenchSummary {
@@ -280,7 +311,7 @@ pub fn summarize(test_id: &str, samples: &[BenchSample]) -> BenchSummary {
 
 pub fn summary_markdown(summary: &BenchSummary) -> String {
     let mut out = String::new();
-    out.push_str(&format!("# Solana Tx Bench Summary\n\n"));
+    out.push_str("# Solana Tx Bench Summary\n\n");
     out.push_str(&format!(
         "- Test ID: `{}`\n- Generated: `{}`\n- Samples: `{}`\n\n",
         summary.test_id,
@@ -323,4 +354,32 @@ fn fmt(value: Option<u128>) -> String {
     value
         .map(|value| value.to_string())
         .unwrap_or_else(|| "-".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn artifact_writer_rejects_path_like_test_ids() {
+        let root = tempdir().expect("tempdir");
+        for test_id in ["", ".", "..", "nested/run", "../outside"] {
+            assert!(ArtifactWriter::create(root.path(), test_id).is_err());
+        }
+    }
+
+    #[test]
+    fn artifact_writer_refuses_to_reuse_nonempty_run_directory() {
+        let root = tempdir().expect("tempdir");
+        let run = root.path().join("existing-run");
+        fs::create_dir(&run).expect("run dir");
+        fs::write(run.join("leader-sends.ndjson"), "existing evidence").expect("existing evidence");
+
+        assert!(ArtifactWriter::create(root.path(), "existing-run").is_err());
+        assert_eq!(
+            fs::read_to_string(run.join("leader-sends.ndjson")).expect("evidence"),
+            "existing evidence"
+        );
+    }
 }

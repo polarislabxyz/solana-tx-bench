@@ -1,119 +1,1873 @@
 {
-  "schema_version": 1,
-  "test_id": "leader-paced-2026-07-13T025442.353Z",
   "title": "Frankfurt DoubleZero TPU vs Public Internet",
-  "duration_seconds": 3600,
+  "generated_at": "2026-07-13T06:06:55.715457731Z",
+  "schema_version": 2,
   "baseline_arm": "public_internet",
   "candidate_arm": "doublezero",
   "delta_convention": "candidate_minus_baseline",
   "coverage": {
-    "comparison_groups": 246,
-    "distinct_eligible_leader_identities": 29,
-    "eligible_leader_run_percent": 11.2689,
-    "eligible_scheduled_slot_percent": 11.2753
+    "observed_leader_runs": 2183,
+    "eligible_leader_runs": 246,
+    "observed_scheduled_slots": 8798,
+    "eligible_scheduled_slots": 992,
+    "eligible_leader_run_pct": 11.268896014658726,
+    "eligible_scheduled_slot_pct": 11.275289838599683
   },
   "landing_coverage": {
-    "both_observed": 204,
-    "same_slot_complete_pairs": 201,
-    "different_slot_complete_pairs": 3,
-    "doublezero_only": 34,
-    "public_only": 2,
+    "comparison_groups": 246,
+    "distinct_leader_identities": 29,
+    "same_slot_pairs": 201,
+    "different_slot_pairs": 3,
+    "baseline_only": 2,
+    "candidate_only": 34,
     "neither_observed": 6
   },
-  "first_observed_same_slot": {
-    "clock": "earliest_configured_receiver_per_transaction",
-    "pairs": 201,
-    "doublezero_first": 115,
-    "same": 0,
-    "public_first": 86,
-    "paired_delta_ms_percentiles": {"p10":-26.038,"p25":-0.170,"p50":-0.006,"p75":0.009,"p90":0.013,"p95":0.018}
-  },
-  "same_slot_placement": {
+  "same_slot_metrics": {
+    "first_observed_ms": {
+      "pairs": 201,
+      "candidate_earlier": 115,
+      "same": 0,
+      "baseline_earlier": 86,
+      "delta_p50": -0.005999999999971806,
+      "delta_p95": 0.01799999999997226,
+      "delta_p99": 4.4080000000000155
+    },
     "processed_transaction_index": {
       "pairs": 201,
-      "doublezero_earlier": 115,
+      "candidate_earlier": 115,
       "same": 0,
-      "public_earlier": 86,
-      "delta_percentiles": {"p0":-467,"p1":-303,"p5":-94,"p10":-42,"p25":-19,"p50":-2,"p75":1,"p90":3,"p95":4,"p99":20,"p100":36}
+      "baseline_earlier": 86,
+      "delta_p50": -2.0,
+      "delta_p95": 4.0,
+      "delta_p99": 20.0
     },
-    "entry": {
+    "entry_index": {
       "pairs": 201,
-      "doublezero_earlier": 113,
+      "candidate_earlier": 113,
       "same": 4,
-      "public_earlier": 84,
-      "delta_p50": -2,
-      "delta_percentiles": {"p0":-96,"p1":-71,"p5":-46,"p10":-38,"p25":-16,"p50":-2,"p75":1,"p90":2,"p95":3,"p99":6,"p100":35}
+      "baseline_earlier": 84,
+      "delta_p50": -2.0,
+      "delta_p95": 3.0,
+      "delta_p99": 6.0
     },
     "preceding_poh_ticks": {
-      "pairs": 200,
-      "doublezero_earlier": 91,
-      "same": 105,
-      "public_earlier": 4,
-      "delta_percentiles": {"p0":-11,"p10":-4,"p25":-2,"p50":0,"p75":0,"p90":0,"p95":0,"p100":4},
-      "doublezero_earlier_magnitude_percentiles": {"pairs":91,"p0":1,"p10":1,"p25":2,"p50":2,"p75":3,"p90":4,"p95":5,"p100":11},
-      "delta_distribution": [
-        {"delta":-11,"pairs":1},
-        {"delta":-10,"pairs":1},
-        {"delta":-6,"pairs":1},
-        {"delta":-5,"pairs":6},
-        {"delta":-4,"pairs":12},
-        {"delta":-3,"pairs":22},
-        {"delta":-2,"pairs":25},
-        {"delta":-1,"pairs":23},
-        {"delta":0,"pairs":105},
-        {"delta":1,"pairs":3},
-        {"delta":4,"pairs":1}
-      ]
+      "pairs": 201,
+      "candidate_earlier": 91,
+      "same": 106,
+      "baseline_earlier": 4,
+      "delta_p50": 0.0,
+      "delta_p95": 0.0,
+      "delta_p99": 1.0
     }
   },
-  "poh_by_city": [
-    {"city":"Beauharnois","pairs":73,"doublezero_earlier":71,"same":1,"public_earlier":1,"doublezero_route_rtt_us":87000},
-    {"city":"London","pairs":57,"doublezero_earlier":1,"same":56,"public_earlier":0,"doublezero_route_rtt_us":11300},
-    {"city":"Luxembourg","pairs":27,"doublezero_earlier":4,"same":23,"public_earlier":0,"doublezero_route_rtt_us":13000},
-    {"city":"Amsterdam","pairs":12,"doublezero_earlier":0,"same":11,"public_earlier":1,"doublezero_route_rtt_us":5920},
-    {"city":"Aubervilliers","pairs":11,"doublezero_earlier":0,"same":9,"public_earlier":2,"doublezero_route_rtt_us":18500},
-    {"city":"Singapore","pairs":11,"doublezero_earlier":10,"same":1,"public_earlier":0,"doublezero_route_rtt_us":145000},
-    {"city":"São Paulo","pairs":2,"doublezero_earlier":2,"same":0,"public_earlier":0,"doublezero_route_rtt_us":null},
-    {"city":"Tokyo","pairs":2,"doublezero_earlier":2,"same":0,"public_earlier":0,"doublezero_route_rtt_us":null},
-    {"city":"Asia/Hong_Kong","pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"doublezero_route_rtt_us":null},
-    {"city":"Bloomfield","pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"doublezero_route_rtt_us":null},
-    {"city":"Los Angeles","pairs":1,"doublezero_earlier":1,"same":0,"public_earlier":0,"doublezero_route_rtt_us":null},
-    {"city":"Prague","pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"doublezero_route_rtt_us":null},
-    {"city":"Stockholm","pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"doublezero_route_rtt_us":null}
+  "by_city": [
+    {
+      "label": "Beauharnois, CA",
+      "validators": 1,
+      "city": "Beauharnois",
+      "country": "CA",
+      "observed_candidate_rtt_us": 87000,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 73,
+          "candidate_earlier": 71,
+          "same": 0,
+          "baseline_earlier": 2,
+          "delta_p50": -5.394999999999982,
+          "delta_p95": -0.004000000000019099,
+          "delta_p99": 31.41700000000003
+        },
+        "processed_transaction_index": {
+          "pairs": 73,
+          "candidate_earlier": 71,
+          "same": 0,
+          "baseline_earlier": 2,
+          "delta_p50": -23.0,
+          "delta_p95": -5.0,
+          "delta_p99": 36.0
+        },
+        "entry_index": {
+          "pairs": 73,
+          "candidate_earlier": 71,
+          "same": 1,
+          "baseline_earlier": 1,
+          "delta_p50": -22.0,
+          "delta_p95": -6.0,
+          "delta_p99": 35.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 73,
+          "candidate_earlier": 71,
+          "same": 1,
+          "baseline_earlier": 1,
+          "delta_p50": -3.0,
+          "delta_p95": -1.0,
+          "delta_p99": 4.0
+        }
+      }
+    },
+    {
+      "label": "London, GB",
+      "validators": 2,
+      "city": "London",
+      "country": "GB",
+      "observed_candidate_rtt_us": 11300,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 56,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 56,
+          "delta_p50": 0.009000000000014552,
+          "delta_p95": 0.11199999999996635,
+          "delta_p99": 4.4080000000000155
+        },
+        "processed_transaction_index": {
+          "pairs": 56,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 56,
+          "delta_p50": 1.0,
+          "delta_p95": 4.0,
+          "delta_p99": 7.0
+        },
+        "entry_index": {
+          "pairs": 56,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 56,
+          "delta_p50": 1.0,
+          "delta_p95": 4.0,
+          "delta_p99": 7.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 56,
+          "candidate_earlier": 0,
+          "same": 56,
+          "baseline_earlier": 0,
+          "delta_p50": 0.0,
+          "delta_p95": 0.0,
+          "delta_p99": 0.0
+        }
+      }
+    },
+    {
+      "label": "Luxembourg, LU",
+      "validators": 2,
+      "city": "Luxembourg",
+      "country": "LU",
+      "observed_candidate_rtt_us": 13000,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 28,
+          "candidate_earlier": 17,
+          "same": 0,
+          "baseline_earlier": 11,
+          "delta_p50": -0.0049999999999954525,
+          "delta_p95": 0.022999999999996135,
+          "delta_p99": 7.263000000000034
+        },
+        "processed_transaction_index": {
+          "pairs": 28,
+          "candidate_earlier": 17,
+          "same": 0,
+          "baseline_earlier": 11,
+          "delta_p50": -1.0,
+          "delta_p95": 5.0,
+          "delta_p99": 5.0
+        },
+        "entry_index": {
+          "pairs": 28,
+          "candidate_earlier": 17,
+          "same": 0,
+          "baseline_earlier": 11,
+          "delta_p50": -1.0,
+          "delta_p95": 4.0,
+          "delta_p99": 5.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 28,
+          "candidate_earlier": 4,
+          "same": 24,
+          "baseline_earlier": 0,
+          "delta_p50": 0.0,
+          "delta_p95": 0.0,
+          "delta_p99": 0.0
+        }
+      }
+    },
+    {
+      "label": "Amsterdam, NL",
+      "validators": 5,
+      "city": "Amsterdam",
+      "country": "NL",
+      "observed_candidate_rtt_us": 5900,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 12,
+          "candidate_earlier": 6,
+          "same": 0,
+          "baseline_earlier": 6,
+          "delta_p50": 0.0049999999999954525,
+          "delta_p95": 0.012999999999991019,
+          "delta_p99": 0.012999999999991019
+        },
+        "processed_transaction_index": {
+          "pairs": 12,
+          "candidate_earlier": 6,
+          "same": 0,
+          "baseline_earlier": 6,
+          "delta_p50": 1.0,
+          "delta_p95": 7.0,
+          "delta_p99": 7.0
+        },
+        "entry_index": {
+          "pairs": 12,
+          "candidate_earlier": 4,
+          "same": 3,
+          "baseline_earlier": 5,
+          "delta_p50": 0.0,
+          "delta_p95": 5.0,
+          "delta_p99": 5.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 12,
+          "candidate_earlier": 0,
+          "same": 11,
+          "baseline_earlier": 1,
+          "delta_p50": 0.0,
+          "delta_p95": 1.0,
+          "delta_p99": 1.0
+        }
+      }
+    },
+    {
+      "label": "Aubervilliers, FR",
+      "validators": 1,
+      "city": "Aubervilliers",
+      "country": "FR",
+      "observed_candidate_rtt_us": 18400,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 11,
+          "candidate_earlier": 3,
+          "same": 0,
+          "baseline_earlier": 8,
+          "delta_p50": 0.011000000000002785,
+          "delta_p95": 0.5739999999999981,
+          "delta_p99": 0.5739999999999981
+        },
+        "processed_transaction_index": {
+          "pairs": 11,
+          "candidate_earlier": 3,
+          "same": 0,
+          "baseline_earlier": 8,
+          "delta_p50": 2.0,
+          "delta_p95": 35.0,
+          "delta_p99": 35.0
+        },
+        "entry_index": {
+          "pairs": 11,
+          "candidate_earlier": 3,
+          "same": 0,
+          "baseline_earlier": 8,
+          "delta_p50": 2.0,
+          "delta_p95": 6.0,
+          "delta_p99": 6.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 11,
+          "candidate_earlier": 0,
+          "same": 9,
+          "baseline_earlier": 2,
+          "delta_p50": 0.0,
+          "delta_p95": 1.0,
+          "delta_p99": 1.0
+        }
+      }
+    },
+    {
+      "label": "Singapore, SG",
+      "validators": 1,
+      "city": "Singapore",
+      "country": "SG",
+      "observed_candidate_rtt_us": 145000,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 11,
+          "candidate_earlier": 11,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -0.009000000000014552,
+          "delta_p95": -0.0049999999999954525,
+          "delta_p99": -0.0049999999999954525
+        },
+        "processed_transaction_index": {
+          "pairs": 11,
+          "candidate_earlier": 11,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -7.0,
+          "delta_p95": -2.0,
+          "delta_p99": -2.0
+        },
+        "entry_index": {
+          "pairs": 11,
+          "candidate_earlier": 11,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -8.0,
+          "delta_p95": -3.0,
+          "delta_p99": -3.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 11,
+          "candidate_earlier": 10,
+          "same": 1,
+          "baseline_earlier": 0,
+          "delta_p50": -1.0,
+          "delta_p95": 0.0,
+          "delta_p99": 0.0
+        }
+      }
+    },
+    {
+      "label": "São Paulo, BR",
+      "validators": 2,
+      "city": "São Paulo",
+      "country": "BR",
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 2,
+          "candidate_earlier": 2,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -17.508999999999986,
+          "delta_p95": -17.508999999999986,
+          "delta_p99": -17.508999999999986
+        },
+        "processed_transaction_index": {
+          "pairs": 2,
+          "candidate_earlier": 2,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -40.0,
+          "delta_p95": -40.0,
+          "delta_p99": -40.0
+        },
+        "entry_index": {
+          "pairs": 2,
+          "candidate_earlier": 2,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -45.0,
+          "delta_p95": -45.0,
+          "delta_p99": -45.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 2,
+          "candidate_earlier": 2,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -5.0,
+          "delta_p95": -5.0,
+          "delta_p99": -5.0
+        }
+      }
+    },
+    {
+      "label": "Tokyo, JP",
+      "validators": 1,
+      "city": "Tokyo",
+      "country": "JP",
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 2,
+          "candidate_earlier": 2,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -20.209000000000003,
+          "delta_p95": -20.209000000000003,
+          "delta_p99": -20.209000000000003
+        },
+        "processed_transaction_index": {
+          "pairs": 2,
+          "candidate_earlier": 2,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -54.0,
+          "delta_p95": -54.0,
+          "delta_p99": -54.0
+        },
+        "entry_index": {
+          "pairs": 2,
+          "candidate_earlier": 2,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -48.0,
+          "delta_p95": -48.0,
+          "delta_p99": -48.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 2,
+          "candidate_earlier": 2,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -5.0,
+          "delta_p95": -5.0,
+          "delta_p99": -5.0
+        }
+      }
+    },
+    {
+      "label": "Bloomfield, US",
+      "validators": 1,
+      "city": "Bloomfield",
+      "country": "US",
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 0.01100000000000989,
+          "delta_p95": 0.01100000000000989,
+          "delta_p99": 0.01100000000000989
+        },
+        "processed_transaction_index": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 2.0,
+          "delta_p95": 2.0,
+          "delta_p99": 2.0
+        },
+        "entry_index": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 2.0,
+          "delta_p95": 2.0,
+          "delta_p99": 2.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 1,
+          "baseline_earlier": 0,
+          "delta_p50": 0.0,
+          "delta_p95": 0.0,
+          "delta_p99": 0.0
+        }
+      }
+    },
+    {
+      "label": "Hong Kong, HK",
+      "validators": 1,
+      "city": "Hong Kong",
+      "country": "HK",
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 0.0049999999999954525,
+          "delta_p95": 0.0049999999999954525,
+          "delta_p99": 0.0049999999999954525
+        },
+        "processed_transaction_index": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 1.0,
+          "delta_p95": 1.0,
+          "delta_p99": 1.0
+        },
+        "entry_index": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 1.0,
+          "delta_p95": 1.0,
+          "delta_p99": 1.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 1,
+          "baseline_earlier": 0,
+          "delta_p50": 0.0,
+          "delta_p95": 0.0,
+          "delta_p99": 0.0
+        }
+      }
+    },
+    {
+      "label": "London, EN",
+      "validators": 1,
+      "city": "London",
+      "country": "EN",
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -0.011000000000024102,
+          "delta_p95": -0.011000000000024102,
+          "delta_p99": -0.011000000000024102
+        },
+        "processed_transaction_index": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -17.0,
+          "delta_p95": -17.0,
+          "delta_p99": -17.0
+        },
+        "entry_index": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -10.0,
+          "delta_p95": -10.0,
+          "delta_p99": -10.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -2.0,
+          "delta_p95": -2.0,
+          "delta_p99": -2.0
+        }
+      }
+    },
+    {
+      "label": "Los Angeles, US",
+      "validators": 1,
+      "city": "Los Angeles",
+      "country": "US",
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -0.009000000000014552,
+          "delta_p95": -0.009000000000014552,
+          "delta_p99": -0.009000000000014552
+        },
+        "processed_transaction_index": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -3.0,
+          "delta_p95": -3.0,
+          "delta_p99": -3.0
+        },
+        "entry_index": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -4.0,
+          "delta_p95": -4.0,
+          "delta_p99": -4.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -1.0,
+          "delta_p95": -1.0,
+          "delta_p99": -1.0
+        }
+      }
+    },
+    {
+      "label": "Prague, CZ",
+      "validators": 1,
+      "city": "Prague",
+      "country": "CZ",
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 0.01099999999999568,
+          "delta_p95": 0.01099999999999568,
+          "delta_p99": 0.01099999999999568
+        },
+        "processed_transaction_index": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 1.0,
+          "delta_p95": 1.0,
+          "delta_p99": 1.0
+        },
+        "entry_index": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 1.0,
+          "delta_p95": 1.0,
+          "delta_p99": 1.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 1,
+          "baseline_earlier": 0,
+          "delta_p50": 0.0,
+          "delta_p95": 0.0,
+          "delta_p99": 0.0
+        }
+      }
+    },
+    {
+      "label": "Stockholm, SE",
+      "validators": 1,
+      "city": "Stockholm",
+      "country": "SE",
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -0.013000000000033651,
+          "delta_p95": -0.013000000000033651,
+          "delta_p99": -0.013000000000033651
+        },
+        "processed_transaction_index": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -1.0,
+          "delta_p95": -1.0,
+          "delta_p99": -1.0
+        },
+        "entry_index": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -1.0,
+          "delta_p95": -1.0,
+          "delta_p99": -1.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 1,
+          "baseline_earlier": 0,
+          "delta_p50": 0.0,
+          "delta_p95": 0.0,
+          "delta_p99": 0.0
+        }
+      }
+    }
   ],
-  "poh_by_distance_from_frankfurt": [
-    {"distance_bucket":"under_1000_km","validators":12,"pairs":108,"doublezero_earlier":5,"same":100,"public_earlier":3},
-    {"distance_bucket":"1000_to_5000_km","validators":1,"pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0},
-    {"distance_bucket":"at_least_5000_km","validators":7,"pairs":90,"doublezero_earlier":85,"same":4,"public_earlier":1},
-    {"distance_bucket":"coordinate_unavailable","validators":1,"pairs":1,"doublezero_earlier":1,"same":0,"public_earlier":0}
+  "by_distance": [
+    {
+      "label": "Under 1,000 km",
+      "validators": 12,
+      "observed_candidate_rtt_us": 5900,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 109,
+          "candidate_earlier": 27,
+          "same": 0,
+          "baseline_earlier": 82,
+          "delta_p50": 0.007999999999981355,
+          "delta_p95": 0.05200000000002092,
+          "delta_p99": 4.4080000000000155
+        },
+        "processed_transaction_index": {
+          "pairs": 109,
+          "candidate_earlier": 27,
+          "same": 0,
+          "baseline_earlier": 82,
+          "delta_p50": 1.0,
+          "delta_p95": 5.0,
+          "delta_p99": 20.0
+        },
+        "entry_index": {
+          "pairs": 109,
+          "candidate_earlier": 25,
+          "same": 3,
+          "baseline_earlier": 81,
+          "delta_p50": 1.0,
+          "delta_p95": 5.0,
+          "delta_p99": 6.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 109,
+          "candidate_earlier": 5,
+          "same": 101,
+          "baseline_earlier": 3,
+          "delta_p50": 0.0,
+          "delta_p95": 0.0,
+          "delta_p99": 1.0
+        }
+      }
+    },
+    {
+      "label": "At least 5,000 km",
+      "validators": 7,
+      "observed_candidate_rtt_us": 87000,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 90,
+          "candidate_earlier": 86,
+          "same": 0,
+          "baseline_earlier": 4,
+          "delta_p50": -0.3120000000000118,
+          "delta_p95": -0.0039999999999054126,
+          "delta_p99": 31.41700000000003
+        },
+        "processed_transaction_index": {
+          "pairs": 90,
+          "candidate_earlier": 86,
+          "same": 0,
+          "baseline_earlier": 4,
+          "delta_p50": -22.0,
+          "delta_p95": -2.0,
+          "delta_p99": 36.0
+        },
+        "entry_index": {
+          "pairs": 90,
+          "candidate_earlier": 86,
+          "same": 1,
+          "baseline_earlier": 3,
+          "delta_p50": -19.0,
+          "delta_p95": -3.0,
+          "delta_p99": 35.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 90,
+          "candidate_earlier": 85,
+          "same": 4,
+          "baseline_earlier": 1,
+          "delta_p50": -2.0,
+          "delta_p95": 0.0,
+          "delta_p99": 4.0
+        }
+      }
+    },
+    {
+      "label": "1,000-5,000 km",
+      "validators": 1,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -0.013000000000033651,
+          "delta_p95": -0.013000000000033651,
+          "delta_p99": -0.013000000000033651
+        },
+        "processed_transaction_index": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -1.0,
+          "delta_p95": -1.0,
+          "delta_p99": -1.0
+        },
+        "entry_index": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -1.0,
+          "delta_p95": -1.0,
+          "delta_p99": -1.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 1,
+          "baseline_earlier": 0,
+          "delta_p50": 0.0,
+          "delta_p95": 0.0,
+          "delta_p99": 0.0
+        }
+      }
+    },
+    {
+      "label": "Coordinate unavailable",
+      "validators": 1,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -0.009000000000014552,
+          "delta_p95": -0.009000000000014552,
+          "delta_p99": -0.009000000000014552
+        },
+        "processed_transaction_index": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -3.0,
+          "delta_p95": -3.0,
+          "delta_p99": -3.0
+        },
+        "entry_index": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -4.0,
+          "delta_p95": -4.0,
+          "delta_p99": -4.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -1.0,
+          "delta_p95": -1.0,
+          "delta_p99": -1.0
+        }
+      }
+    }
   ],
-  "poh_by_validator": [
-    {"identity":"Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk","city":"Beauharnois","country":"CA","distance_km":5876,"pairs":73,"doublezero_earlier":71,"same":1,"public_earlier":1,"tick_delta_p10":-4,"tick_delta_p50":-3,"tick_delta_p90":-1,"first_observed_delta_p50_ms":-5.395},
-    {"identity":"9eGrDohdNTAo61DRHyfMuqKWXqYnA3i254Wiszxe8FoY","city":"London","country":"GB","distance_km":637,"pairs":31,"doublezero_earlier":0,"same":31,"public_earlier":0,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":0,"first_observed_delta_p50_ms":0.009},
-    {"identity":"5pPRHniefFjkiaArbGX3Y8NUysJmQ9tMZg3FrFGwHzSm","city":"Luxembourg","country":"LU","distance_km":185,"pairs":26,"doublezero_earlier":4,"same":22,"public_earlier":0,"tick_delta_p10":-1,"tick_delta_p50":0,"tick_delta_p90":0,"first_observed_delta_p50_ms":-0.005},
-    {"identity":"JD549HsbJHeEKKUrKgg4Fj2iyv2RGjsV7NTZjZUrHybB","city":"London","country":"GB","distance_km":637,"pairs":25,"doublezero_earlier":0,"same":25,"public_earlier":0,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":0,"first_observed_delta_p50_ms":0.009},
-    {"identity":"CoG8d9Fp2TFJRkAmrPMiPsGhQWHzdTTVoegEp9svRgmJ","city":"Singapore","country":"SG","distance_km":10260,"pairs":11,"doublezero_earlier":10,"same":1,"public_earlier":0,"tick_delta_p10":-2,"tick_delta_p50":-1,"tick_delta_p90":-1,"first_observed_delta_p50_ms":-0.009},
-    {"identity":"ana2y2YvQ3ZPMwm6qhnN3nJoUSiT3qx5Pvetkq9xcfY","city":"Aubervilliers","country":"FR","distance_km":473,"pairs":11,"doublezero_earlier":0,"same":9,"public_earlier":2,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":1,"first_observed_delta_p50_ms":0.011},
-    {"identity":"7cVfgArCheMR6Cs4t6vz5rfnqd56vZq4ndaBrY5xkxXy","city":"Amsterdam","country":"NL","distance_km":365,"pairs":7,"doublezero_earlier":0,"same":6,"public_earlier":1,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":1,"first_observed_delta_p50_ms":-0.009},
-    {"identity":"HH5dA42XF1HxNk1TRpG6LuKfLViMYNdAz5iWrFM4hWFi","city":"Amsterdam","country":"NL","distance_km":365,"pairs":2,"doublezero_earlier":0,"same":2,"public_earlier":0,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":0,"first_observed_delta_p50_ms":-0.005},
-    {"identity":"mds4GEuiSgQRqveGyktWpETBFCb4AS2wDnhqwLHcT6Z","city":"Tokyo","country":"JP","distance_km":9332,"pairs":2,"doublezero_earlier":2,"same":0,"public_earlier":0,"tick_delta_p10":-5,"tick_delta_p50":-5,"tick_delta_p90":-5,"first_observed_delta_p50_ms":-20.209},
-    {"identity":"2dfgsiSaZ51QYPsECMYMG247PXxyKdwkV9wTHoQb8YEC","city":"Amsterdam","country":"NL","distance_km":365,"pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":0,"first_observed_delta_p50_ms":0.005},
-    {"identity":"2mMGsb5uy1Q4Dvezr8HK2E8SJoChcb2X7b61tJPaVHHd","city":"Stockholm","country":"SE","distance_km":1187,"pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":0,"first_observed_delta_p50_ms":-0.013},
-    {"identity":"ACvL73V4GNnxPVfZ7K89jCrYurLyzpEuE9qirjvh2Xmi","city":"Luxembourg","country":"LU","distance_km":185,"pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":0,"first_observed_delta_p50_ms":-0.004},
-    {"identity":"EBk678aQvc3cUkfGyoehfw21JQfJXjmWuBeopYc89RSV","city":"Los Angeles","country":"US","distance_km":null,"pairs":1,"doublezero_earlier":1,"same":0,"public_earlier":0,"tick_delta_p10":-1,"tick_delta_p50":-1,"tick_delta_p90":-1,"first_observed_delta_p50_ms":-0.009},
-    {"identity":"ECZx4Dfyn2o55KTYbM9r3Dt4VZRcrdfdrst7sUbWgrdU","city":"Bloomfield","country":"US","distance_km":6208,"pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":0,"first_observed_delta_p50_ms":0.011},
-    {"identity":"H8fHToVcZPi5bupGZohGPX2SWs8NHzgFKQ31wi5n6oux","city":"London","country":"EN","distance_km":635,"pairs":1,"doublezero_earlier":1,"same":0,"public_earlier":0,"tick_delta_p10":-2,"tick_delta_p50":-2,"tick_delta_p90":-2,"first_observed_delta_p50_ms":-0.011},
-    {"identity":"HW4zorvt6xDwhU36RqjcWNwU8YMj9tiqnAafBKW4cqV","city":"Asia/Hong_Kong","country":"HK","distance_km":9163,"pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":0,"first_observed_delta_p50_ms":0.005},
-    {"identity":"RNXnAJV1DeBt6Lytjz4wYzvS3d6bhsfidS5Np4ovwZz","city":"Prague","country":"CZ","distance_km":409,"pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":0,"first_observed_delta_p50_ms":0.011},
-    {"identity":"SA1LFXr4os2P4VKGUyRv84uFfuUYgcQkFh2uA4SmRcr","city":"São Paulo","country":"BR","distance_km":9829,"pairs":1,"doublezero_earlier":1,"same":0,"public_earlier":0,"tick_delta_p10":-5,"tick_delta_p50":-5,"tick_delta_p90":-5,"first_observed_delta_p50_ms":-26.560},
-    {"identity":"SSmBEooM7RkmyuXxuKgAhTvhQZ36Z3G2WsmLGJKoQLY","city":"Amsterdam","country":"NL","distance_km":365,"pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":0,"first_observed_delta_p50_ms":0.013},
-    {"identity":"kom1oNHyyt84XLGVfi5Jo1qkVkU5xG1sBxPG19rWknE","city":"Amsterdam","country":"NL","distance_km":365,"pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"tick_delta_p10":0,"tick_delta_p50":0,"tick_delta_p90":0,"first_observed_delta_p50_ms":0.011},
-    {"identity":"mALL2W6DUgDDtcyurC9v5YTF2CMMeuRwPBkf6tEoG3y","city":"São Paulo","country":"BR","distance_km":9829,"pairs":1,"doublezero_earlier":1,"same":0,"public_earlier":0,"tick_delta_p10":-5,"tick_delta_p50":-5,"tick_delta_p90":-5,"first_observed_delta_p50_ms":-17.509}
-  ],
-  "cost_lamports": 2460000,
-  "commits": {
-    "benchmark_report": "f9911180144800283aa3b210c83ed4106f242b8d",
-    "harness": "3ab07c3fbd0e5728442e31890db52e1e150ead22",
-    "relay": "996e187660133bf3d4c95b78f2283ff90b40df4e"
-  }
+  "by_validator": [
+    {
+      "label": "Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk",
+      "validators": 1,
+      "identity": "Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk",
+      "city": "Beauharnois",
+      "country": "CA",
+      "latitude": 45.322,
+      "longitude": -73.8741,
+      "distance_km": 5875.785776911479,
+      "observed_candidate_rtt_us": 87000,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 73,
+          "candidate_earlier": 71,
+          "same": 0,
+          "baseline_earlier": 2,
+          "delta_p50": -5.394999999999982,
+          "delta_p95": -0.004000000000019099,
+          "delta_p99": 31.41700000000003
+        },
+        "processed_transaction_index": {
+          "pairs": 73,
+          "candidate_earlier": 71,
+          "same": 0,
+          "baseline_earlier": 2,
+          "delta_p50": -23.0,
+          "delta_p95": -5.0,
+          "delta_p99": 36.0
+        },
+        "entry_index": {
+          "pairs": 73,
+          "candidate_earlier": 71,
+          "same": 1,
+          "baseline_earlier": 1,
+          "delta_p50": -22.0,
+          "delta_p95": -6.0,
+          "delta_p99": 35.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 73,
+          "candidate_earlier": 71,
+          "same": 1,
+          "baseline_earlier": 1,
+          "delta_p50": -3.0,
+          "delta_p95": -1.0,
+          "delta_p99": 4.0
+        }
+      }
+    },
+    {
+      "label": "9eGrDohdNTAo61DRHyfMuqKWXqYnA3i254Wiszxe8FoY",
+      "validators": 1,
+      "identity": "9eGrDohdNTAo61DRHyfMuqKWXqYnA3i254Wiszxe8FoY",
+      "city": "London",
+      "country": "GB",
+      "latitude": 51.4964,
+      "longitude": -0.1224,
+      "distance_km": 637.1746896006886,
+      "observed_candidate_rtt_us": 11300,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 31,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 31,
+          "delta_p50": 0.008999999999957708,
+          "delta_p95": 0.26000000000004775,
+          "delta_p99": 4.4080000000000155
+        },
+        "processed_transaction_index": {
+          "pairs": 31,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 31,
+          "delta_p50": 1.0,
+          "delta_p95": 4.0,
+          "delta_p99": 5.0
+        },
+        "entry_index": {
+          "pairs": 31,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 31,
+          "delta_p50": 1.0,
+          "delta_p95": 4.0,
+          "delta_p99": 5.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 31,
+          "candidate_earlier": 0,
+          "same": 31,
+          "baseline_earlier": 0,
+          "delta_p50": 0.0,
+          "delta_p95": 0.0,
+          "delta_p99": 0.0
+        }
+      }
+    },
+    {
+      "label": "5pPRHniefFjkiaArbGX3Y8NUysJmQ9tMZg3FrFGwHzSm",
+      "validators": 1,
+      "identity": "5pPRHniefFjkiaArbGX3Y8NUysJmQ9tMZg3FrFGwHzSm",
+      "city": "Luxembourg",
+      "country": "LU",
+      "latitude": 49.7498,
+      "longitude": 6.1661,
+      "distance_km": 184.50284567415966,
+      "observed_candidate_rtt_us": 13000,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 27,
+          "candidate_earlier": 16,
+          "same": 0,
+          "baseline_earlier": 11,
+          "delta_p50": -0.0049999999999954525,
+          "delta_p95": 0.022999999999996135,
+          "delta_p99": 7.263000000000034
+        },
+        "processed_transaction_index": {
+          "pairs": 27,
+          "candidate_earlier": 16,
+          "same": 0,
+          "baseline_earlier": 11,
+          "delta_p50": -1.0,
+          "delta_p95": 5.0,
+          "delta_p99": 5.0
+        },
+        "entry_index": {
+          "pairs": 27,
+          "candidate_earlier": 16,
+          "same": 0,
+          "baseline_earlier": 11,
+          "delta_p50": -1.0,
+          "delta_p95": 4.0,
+          "delta_p99": 5.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 27,
+          "candidate_earlier": 4,
+          "same": 23,
+          "baseline_earlier": 0,
+          "delta_p50": 0.0,
+          "delta_p95": 0.0,
+          "delta_p99": 0.0
+        }
+      }
+    },
+    {
+      "label": "JD549HsbJHeEKKUrKgg4Fj2iyv2RGjsV7NTZjZUrHybB",
+      "validators": 1,
+      "identity": "JD549HsbJHeEKKUrKgg4Fj2iyv2RGjsV7NTZjZUrHybB",
+      "city": "London",
+      "country": "GB",
+      "latitude": 51.4964,
+      "longitude": -0.1224,
+      "distance_km": 637.1746896006886,
+      "observed_candidate_rtt_us": 75400,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 25,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 25,
+          "delta_p50": 0.009000000000014552,
+          "delta_p95": 0.05200000000002092,
+          "delta_p99": 0.11199999999996635
+        },
+        "processed_transaction_index": {
+          "pairs": 25,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 25,
+          "delta_p50": 1.0,
+          "delta_p95": 3.0,
+          "delta_p99": 7.0
+        },
+        "entry_index": {
+          "pairs": 25,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 25,
+          "delta_p50": 1.0,
+          "delta_p95": 3.0,
+          "delta_p99": 7.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 25,
+          "candidate_earlier": 0,
+          "same": 25,
+          "baseline_earlier": 0,
+          "delta_p50": 0.0,
+          "delta_p95": 0.0,
+          "delta_p99": 0.0
+        }
+      }
+    },
+    {
+      "label": "CoG8d9Fp2TFJRkAmrPMiPsGhQWHzdTTVoegEp9svRgmJ",
+      "validators": 1,
+      "identity": "CoG8d9Fp2TFJRkAmrPMiPsGhQWHzdTTVoegEp9svRgmJ",
+      "city": "Singapore",
+      "country": "SG",
+      "latitude": 1.3024,
+      "longitude": 103.7857,
+      "distance_km": 10259.861478788505,
+      "observed_candidate_rtt_us": 145000,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 11,
+          "candidate_earlier": 11,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -0.009000000000014552,
+          "delta_p95": -0.0049999999999954525,
+          "delta_p99": -0.0049999999999954525
+        },
+        "processed_transaction_index": {
+          "pairs": 11,
+          "candidate_earlier": 11,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -7.0,
+          "delta_p95": -2.0,
+          "delta_p99": -2.0
+        },
+        "entry_index": {
+          "pairs": 11,
+          "candidate_earlier": 11,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -8.0,
+          "delta_p95": -3.0,
+          "delta_p99": -3.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 11,
+          "candidate_earlier": 10,
+          "same": 1,
+          "baseline_earlier": 0,
+          "delta_p50": -1.0,
+          "delta_p95": 0.0,
+          "delta_p99": 0.0
+        }
+      }
+    },
+    {
+      "label": "ana2y2YvQ3ZPMwm6qhnN3nJoUSiT3qx5Pvetkq9xcfY",
+      "validators": 1,
+      "identity": "ana2y2YvQ3ZPMwm6qhnN3nJoUSiT3qx5Pvetkq9xcfY",
+      "city": "Aubervilliers",
+      "country": "FR",
+      "latitude": 48.9163,
+      "longitude": 2.3869,
+      "distance_km": 473.33026486849764,
+      "observed_candidate_rtt_us": 18400,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 11,
+          "candidate_earlier": 3,
+          "same": 0,
+          "baseline_earlier": 8,
+          "delta_p50": 0.011000000000002785,
+          "delta_p95": 0.5739999999999981,
+          "delta_p99": 0.5739999999999981
+        },
+        "processed_transaction_index": {
+          "pairs": 11,
+          "candidate_earlier": 3,
+          "same": 0,
+          "baseline_earlier": 8,
+          "delta_p50": 2.0,
+          "delta_p95": 35.0,
+          "delta_p99": 35.0
+        },
+        "entry_index": {
+          "pairs": 11,
+          "candidate_earlier": 3,
+          "same": 0,
+          "baseline_earlier": 8,
+          "delta_p50": 2.0,
+          "delta_p95": 6.0,
+          "delta_p99": 6.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 11,
+          "candidate_earlier": 0,
+          "same": 9,
+          "baseline_earlier": 2,
+          "delta_p50": 0.0,
+          "delta_p95": 1.0,
+          "delta_p99": 1.0
+        }
+      }
+    },
+    {
+      "label": "7cVfgArCheMR6Cs4t6vz5rfnqd56vZq4ndaBrY5xkxXy",
+      "validators": 1,
+      "identity": "7cVfgArCheMR6Cs4t6vz5rfnqd56vZq4ndaBrY5xkxXy",
+      "city": "Amsterdam",
+      "country": "NL",
+      "latitude": 52.3716,
+      "longitude": 4.8883,
+      "distance_km": 364.51554661653336,
+      "observed_candidate_rtt_us": 5900,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 7,
+          "candidate_earlier": 4,
+          "same": 0,
+          "baseline_earlier": 3,
+          "delta_p50": -0.009000000000000341,
+          "delta_p95": 0.012000000000000455,
+          "delta_p99": 0.012000000000000455
+        },
+        "processed_transaction_index": {
+          "pairs": 7,
+          "candidate_earlier": 4,
+          "same": 0,
+          "baseline_earlier": 3,
+          "delta_p50": -1.0,
+          "delta_p95": 7.0,
+          "delta_p99": 7.0
+        },
+        "entry_index": {
+          "pairs": 7,
+          "candidate_earlier": 2,
+          "same": 3,
+          "baseline_earlier": 2,
+          "delta_p50": 0.0,
+          "delta_p95": 5.0,
+          "delta_p99": 5.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 7,
+          "candidate_earlier": 0,
+          "same": 6,
+          "baseline_earlier": 1,
+          "delta_p50": 0.0,
+          "delta_p95": 1.0,
+          "delta_p99": 1.0
+        }
+      }
+    },
+    {
+      "label": "HH5dA42XF1HxNk1TRpG6LuKfLViMYNdAz5iWrFM4hWFi",
+      "validators": 1,
+      "identity": "HH5dA42XF1HxNk1TRpG6LuKfLViMYNdAz5iWrFM4hWFi",
+      "city": "Amsterdam",
+      "country": "NL",
+      "latitude": 52.3824,
+      "longitude": 4.8995,
+      "distance_km": 364.759233855383,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 2,
+          "candidate_earlier": 2,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -0.005000000000009663,
+          "delta_p95": -0.005000000000009663,
+          "delta_p99": -0.005000000000009663
+        },
+        "processed_transaction_index": {
+          "pairs": 2,
+          "candidate_earlier": 2,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -1.0,
+          "delta_p95": -1.0,
+          "delta_p99": -1.0
+        },
+        "entry_index": {
+          "pairs": 2,
+          "candidate_earlier": 2,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -1.0,
+          "delta_p95": -1.0,
+          "delta_p99": -1.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 2,
+          "candidate_earlier": 0,
+          "same": 2,
+          "baseline_earlier": 0,
+          "delta_p50": 0.0,
+          "delta_p95": 0.0,
+          "delta_p99": 0.0
+        }
+      }
+    },
+    {
+      "label": "mds4GEuiSgQRqveGyktWpETBFCb4AS2wDnhqwLHcT6Z",
+      "validators": 1,
+      "identity": "mds4GEuiSgQRqveGyktWpETBFCb4AS2wDnhqwLHcT6Z",
+      "city": "Tokyo",
+      "country": "JP",
+      "latitude": 35.6893,
+      "longitude": 139.6899,
+      "distance_km": 9331.858895463383,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 2,
+          "candidate_earlier": 2,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -20.209000000000003,
+          "delta_p95": -20.209000000000003,
+          "delta_p99": -20.209000000000003
+        },
+        "processed_transaction_index": {
+          "pairs": 2,
+          "candidate_earlier": 2,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -54.0,
+          "delta_p95": -54.0,
+          "delta_p99": -54.0
+        },
+        "entry_index": {
+          "pairs": 2,
+          "candidate_earlier": 2,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -48.0,
+          "delta_p95": -48.0,
+          "delta_p99": -48.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 2,
+          "candidate_earlier": 2,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -5.0,
+          "delta_p95": -5.0,
+          "delta_p99": -5.0
+        }
+      }
+    },
+    {
+      "label": "2dfgsiSaZ51QYPsECMYMG247PXxyKdwkV9wTHoQb8YEC",
+      "validators": 1,
+      "identity": "2dfgsiSaZ51QYPsECMYMG247PXxyKdwkV9wTHoQb8YEC",
+      "city": "Amsterdam",
+      "country": "NL",
+      "latitude": 52.3716,
+      "longitude": 4.8883,
+      "distance_km": 364.51554661653336,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 0.0049999999999954525,
+          "delta_p95": 0.0049999999999954525,
+          "delta_p99": 0.0049999999999954525
+        },
+        "processed_transaction_index": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 3.0,
+          "delta_p95": 3.0,
+          "delta_p99": 3.0
+        },
+        "entry_index": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 1.0,
+          "delta_p95": 1.0,
+          "delta_p99": 1.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 1,
+          "baseline_earlier": 0,
+          "delta_p50": 0.0,
+          "delta_p95": 0.0,
+          "delta_p99": 0.0
+        }
+      }
+    },
+    {
+      "label": "2mMGsb5uy1Q4Dvezr8HK2E8SJoChcb2X7b61tJPaVHHd",
+      "validators": 1,
+      "identity": "2mMGsb5uy1Q4Dvezr8HK2E8SJoChcb2X7b61tJPaVHHd",
+      "city": "Stockholm",
+      "country": "SE",
+      "latitude": 59.3287,
+      "longitude": 18.0717,
+      "distance_km": 1186.669252829025,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -0.013000000000033651,
+          "delta_p95": -0.013000000000033651,
+          "delta_p99": -0.013000000000033651
+        },
+        "processed_transaction_index": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -1.0,
+          "delta_p95": -1.0,
+          "delta_p99": -1.0
+        },
+        "entry_index": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -1.0,
+          "delta_p95": -1.0,
+          "delta_p99": -1.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 1,
+          "baseline_earlier": 0,
+          "delta_p50": 0.0,
+          "delta_p95": 0.0,
+          "delta_p99": 0.0
+        }
+      }
+    },
+    {
+      "label": "ACvL73V4GNnxPVfZ7K89jCrYurLyzpEuE9qirjvh2Xmi",
+      "validators": 1,
+      "identity": "ACvL73V4GNnxPVfZ7K89jCrYurLyzpEuE9qirjvh2Xmi",
+      "city": "Luxembourg",
+      "country": "LU",
+      "latitude": 49.7498,
+      "longitude": 6.1661,
+      "distance_km": 184.50284567415966,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -0.003999999999990678,
+          "delta_p95": -0.003999999999990678,
+          "delta_p99": -0.003999999999990678
+        },
+        "processed_transaction_index": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -1.0,
+          "delta_p95": -1.0,
+          "delta_p99": -1.0
+        },
+        "entry_index": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -1.0,
+          "delta_p95": -1.0,
+          "delta_p99": -1.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 1,
+          "baseline_earlier": 0,
+          "delta_p50": 0.0,
+          "delta_p95": 0.0,
+          "delta_p99": 0.0
+        }
+      }
+    },
+    {
+      "label": "EBk678aQvc3cUkfGyoehfw21JQfJXjmWuBeopYc89RSV",
+      "validators": 1,
+      "identity": "EBk678aQvc3cUkfGyoehfw21JQfJXjmWuBeopYc89RSV",
+      "city": "Los Angeles",
+      "country": "US",
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -0.009000000000014552,
+          "delta_p95": -0.009000000000014552,
+          "delta_p99": -0.009000000000014552
+        },
+        "processed_transaction_index": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -3.0,
+          "delta_p95": -3.0,
+          "delta_p99": -3.0
+        },
+        "entry_index": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -4.0,
+          "delta_p95": -4.0,
+          "delta_p99": -4.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -1.0,
+          "delta_p95": -1.0,
+          "delta_p99": -1.0
+        }
+      }
+    },
+    {
+      "label": "ECZx4Dfyn2o55KTYbM9r3Dt4VZRcrdfdrst7sUbWgrdU",
+      "validators": 1,
+      "identity": "ECZx4Dfyn2o55KTYbM9r3Dt4VZRcrdfdrst7sUbWgrdU",
+      "city": "Bloomfield",
+      "country": "US",
+      "latitude": 40.803,
+      "longitude": -74.1909,
+      "distance_km": 6208.245826441096,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 0.01100000000000989,
+          "delta_p95": 0.01100000000000989,
+          "delta_p99": 0.01100000000000989
+        },
+        "processed_transaction_index": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 2.0,
+          "delta_p95": 2.0,
+          "delta_p99": 2.0
+        },
+        "entry_index": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 2.0,
+          "delta_p95": 2.0,
+          "delta_p99": 2.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 1,
+          "baseline_earlier": 0,
+          "delta_p50": 0.0,
+          "delta_p95": 0.0,
+          "delta_p99": 0.0
+        }
+      }
+    },
+    {
+      "label": "H8fHToVcZPi5bupGZohGPX2SWs8NHzgFKQ31wi5n6oux",
+      "validators": 1,
+      "identity": "H8fHToVcZPi5bupGZohGPX2SWs8NHzgFKQ31wi5n6oux",
+      "city": "London",
+      "country": "EN",
+      "latitude": 51.5088,
+      "longitude": -0.093,
+      "distance_km": 635.4289911070545,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -0.011000000000024102,
+          "delta_p95": -0.011000000000024102,
+          "delta_p99": -0.011000000000024102
+        },
+        "processed_transaction_index": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -17.0,
+          "delta_p95": -17.0,
+          "delta_p99": -17.0
+        },
+        "entry_index": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -10.0,
+          "delta_p95": -10.0,
+          "delta_p99": -10.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -2.0,
+          "delta_p95": -2.0,
+          "delta_p99": -2.0
+        }
+      }
+    },
+    {
+      "label": "HW4zorvt6xDwhU36RqjcWNwU8YMj9tiqnAafBKW4cqV",
+      "validators": 1,
+      "identity": "HW4zorvt6xDwhU36RqjcWNwU8YMj9tiqnAafBKW4cqV",
+      "city": "Hong Kong",
+      "country": "HK",
+      "latitude": 22.2578,
+      "longitude": 114.1657,
+      "distance_km": 9162.943718509909,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 0.0049999999999954525,
+          "delta_p95": 0.0049999999999954525,
+          "delta_p99": 0.0049999999999954525
+        },
+        "processed_transaction_index": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 1.0,
+          "delta_p95": 1.0,
+          "delta_p99": 1.0
+        },
+        "entry_index": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 1.0,
+          "delta_p95": 1.0,
+          "delta_p99": 1.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 1,
+          "baseline_earlier": 0,
+          "delta_p50": 0.0,
+          "delta_p95": 0.0,
+          "delta_p99": 0.0
+        }
+      }
+    },
+    {
+      "label": "RNXnAJV1DeBt6Lytjz4wYzvS3d6bhsfidS5Np4ovwZz",
+      "validators": 1,
+      "identity": "RNXnAJV1DeBt6Lytjz4wYzvS3d6bhsfidS5Np4ovwZz",
+      "city": "Prague",
+      "country": "CZ",
+      "latitude": 50.0848,
+      "longitude": 14.4112,
+      "distance_km": 408.5618749521452,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 0.01099999999999568,
+          "delta_p95": 0.01099999999999568,
+          "delta_p99": 0.01099999999999568
+        },
+        "processed_transaction_index": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 1.0,
+          "delta_p95": 1.0,
+          "delta_p99": 1.0
+        },
+        "entry_index": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 1.0,
+          "delta_p95": 1.0,
+          "delta_p99": 1.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 1,
+          "baseline_earlier": 0,
+          "delta_p50": 0.0,
+          "delta_p95": 0.0,
+          "delta_p99": 0.0
+        }
+      }
+    },
+    {
+      "label": "SA1LFXr4os2P4VKGUyRv84uFfuUYgcQkFh2uA4SmRcr",
+      "validators": 1,
+      "identity": "SA1LFXr4os2P4VKGUyRv84uFfuUYgcQkFh2uA4SmRcr",
+      "city": "São Paulo",
+      "country": "BR",
+      "latitude": -23.5475,
+      "longitude": -46.6361,
+      "distance_km": 9829.204624965836,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -26.560000000000002,
+          "delta_p95": -26.560000000000002,
+          "delta_p99": -26.560000000000002
+        },
+        "processed_transaction_index": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -40.0,
+          "delta_p95": -40.0,
+          "delta_p99": -40.0
+        },
+        "entry_index": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -45.0,
+          "delta_p95": -45.0,
+          "delta_p99": -45.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -5.0,
+          "delta_p95": -5.0,
+          "delta_p99": -5.0
+        }
+      }
+    },
+    {
+      "label": "SSmBEooM7RkmyuXxuKgAhTvhQZ36Z3G2WsmLGJKoQLY",
+      "validators": 1,
+      "identity": "SSmBEooM7RkmyuXxuKgAhTvhQZ36Z3G2WsmLGJKoQLY",
+      "city": "Amsterdam",
+      "country": "NL",
+      "latitude": 52.3716,
+      "longitude": 4.8883,
+      "distance_km": 364.51554661653336,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 0.012999999999991019,
+          "delta_p95": 0.012999999999991019,
+          "delta_p99": 0.012999999999991019
+        },
+        "processed_transaction_index": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 1.0,
+          "delta_p95": 1.0,
+          "delta_p99": 1.0
+        },
+        "entry_index": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 1.0,
+          "delta_p95": 1.0,
+          "delta_p99": 1.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 1,
+          "baseline_earlier": 0,
+          "delta_p50": 0.0,
+          "delta_p95": 0.0,
+          "delta_p99": 0.0
+        }
+      }
+    },
+    {
+      "label": "kom1oNHyyt84XLGVfi5Jo1qkVkU5xG1sBxPG19rWknE",
+      "validators": 1,
+      "identity": "kom1oNHyyt84XLGVfi5Jo1qkVkU5xG1sBxPG19rWknE",
+      "city": "Amsterdam",
+      "country": "NL",
+      "latitude": 52.3716,
+      "longitude": 4.8883,
+      "distance_km": 364.51554661653336,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 0.01099999999999568,
+          "delta_p95": 0.01099999999999568,
+          "delta_p99": 0.01099999999999568
+        },
+        "processed_transaction_index": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 1.0,
+          "delta_p95": 1.0,
+          "delta_p99": 1.0
+        },
+        "entry_index": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 0,
+          "baseline_earlier": 1,
+          "delta_p50": 1.0,
+          "delta_p95": 1.0,
+          "delta_p99": 1.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 1,
+          "candidate_earlier": 0,
+          "same": 1,
+          "baseline_earlier": 0,
+          "delta_p50": 0.0,
+          "delta_p95": 0.0,
+          "delta_p99": 0.0
+        }
+      }
+    },
+    {
+      "label": "mALL2W6DUgDDtcyurC9v5YTF2CMMeuRwPBkf6tEoG3y",
+      "validators": 1,
+      "identity": "mALL2W6DUgDDtcyurC9v5YTF2CMMeuRwPBkf6tEoG3y",
+      "city": "São Paulo",
+      "country": "BR",
+      "latitude": -23.5475,
+      "longitude": -46.6361,
+      "distance_km": 9829.204624965836,
+      "metrics": {
+        "first_observed_ms": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -17.508999999999986,
+          "delta_p95": -17.508999999999986,
+          "delta_p99": -17.508999999999986
+        },
+        "processed_transaction_index": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -111.0,
+          "delta_p95": -111.0,
+          "delta_p99": -111.0
+        },
+        "entry_index": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -77.0,
+          "delta_p95": -77.0,
+          "delta_p99": -77.0
+        },
+        "preceding_poh_ticks": {
+          "pairs": 1,
+          "candidate_earlier": 1,
+          "same": 0,
+          "baseline_earlier": 0,
+          "delta_p50": -5.0,
+          "delta_p95": -5.0,
+          "delta_p99": -5.0
+        }
+      }
+    }
+  ]
 }

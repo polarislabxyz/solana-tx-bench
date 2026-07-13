@@ -1,17 +1,22 @@
 pub mod adapters;
+mod artifact_io;
 pub mod artifacts;
 pub mod collectors;
 pub mod compare;
+mod comparison_report;
 pub mod config;
 pub mod cost;
 pub mod leader_paced;
 pub mod leader_slots;
 pub mod observations;
+mod paired_analysis;
+mod paired_report;
 pub mod provider_observers;
 pub mod report;
 pub mod runner;
 pub mod slot_signal;
 pub mod tx;
+mod url;
 
 pub use adapters::{
     ProviderAck, ProviderAdapter, ProviderConfig, ProviderError, ProviderKind, SendContext,
