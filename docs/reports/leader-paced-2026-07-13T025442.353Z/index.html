@@ -158,13 +158,29 @@
       latency also favored DoubleZero by a median 6.683 ms in Beauharnois, while
       the larger European city cohorts were effectively tied.
     </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Distance from Frankfurt</th><th>Validators</th><th>PoH pairs</th><th>DoubleZero earlier</th><th>Same interval</th><th>Public earlier</th></tr></thead>
+        <tbody>
+          <tr><td>Under 1,000 km</td><td>12</td><td>108</td><td>5</td><td>100</td><td>3</td></tr>
+          <tr><td>1,000–5,000 km</td><td>1</td><td>1</td><td>0</td><td>1</td><td>0</td></tr>
+          <tr><td>At least 5,000 km</td><td>7</td><td>90</td><td>85</td><td>4</td><td>1</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">
+      Distance uses the latitude and longitude saved in the historical
+      <code>getLeaderSlots</code> snapshots. One tick-complete pair had no saved
+      coordinate and is excluded from this table.
+    </p>
     <p>
       It is not yet a general distance curve. The Beauharnois cohort comes from
-      one validator observed across repeated leader runs, and several distant
-      cities have too few pairs. The next defensible analysis is per-validator
-      first, then distance or measured RTT across more distinct validators and
-      more epochs. Repeated runs from one validator must not be treated as
-      independent validator samples.
+      one validator observed across repeated leader runs and contributes 73 of
+      the 90 distant pairs. Several other distant cities have too few pairs.
+      The next defensible analysis is per-validator first, then distance or
+      measured RTT across more distinct validators and more epochs. Repeated
+      runs from one validator must not be treated as independent validator
+      samples.
     </p>
 
     <h2>Why the earlier report said “Unknown”</h2>

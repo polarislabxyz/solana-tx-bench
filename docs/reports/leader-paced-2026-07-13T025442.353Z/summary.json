@@ -53,6 +53,12 @@
     {"city":"Prague","pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"doublezero_route_rtt_us":null},
     {"city":"Stockholm","pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"doublezero_route_rtt_us":null}
   ],
+  "poh_by_distance_from_frankfurt": [
+    {"distance_bucket":"under_1000_km","validators":12,"pairs":108,"doublezero_earlier":5,"same":100,"public_earlier":3},
+    {"distance_bucket":"1000_to_5000_km","validators":1,"pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0},
+    {"distance_bucket":"at_least_5000_km","validators":7,"pairs":90,"doublezero_earlier":85,"same":4,"public_earlier":1},
+    {"distance_bucket":"coordinate_unavailable","validators":1,"pairs":1,"doublezero_earlier":1,"same":0,"public_earlier":0}
+  ],
   "cost_lamports": 2460000,
   "commits": {
     "benchmark_report": "f9911180144800283aa3b210c83ed4106f242b8d",
