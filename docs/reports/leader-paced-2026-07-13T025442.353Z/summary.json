@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "test_id": "leader-paced-2026-07-13T025442.353Z",
+  "title": "Frankfurt DoubleZero TPU vs Public Internet",
+  "duration_seconds": 3600,
+  "baseline_arm": "public_internet",
+  "candidate_arm": "doublezero",
+  "delta_convention": "candidate_minus_baseline",
+  "coverage": {
+    "comparison_groups": 246,
+    "distinct_eligible_leader_identities": 29,
+    "eligible_leader_run_percent": 11.2689,
+    "eligible_scheduled_slot_percent": 11.2753
+  },
+  "processed": {
+    "both_observed": 204,
+    "doublezero_only": 34,
+    "public_only": 2,
+    "neither_observed": 6,
+    "doublezero_wins": 127,
+    "public_wins": 77,
+    "delta_p50_ms": -0.009,
+    "transaction_index_delta_p50": -2
+  },
+  "same_slot_placement": {
+    "entry": {
+      "pairs": 201,
+      "doublezero_earlier": 113,
+      "same": 4,
+      "public_earlier": 84,
+      "delta_p50": -2
+    },
+    "preceding_poh_ticks": {
+      "pairs": 200,
+      "doublezero_earlier": 91,
+      "same": 105,
+      "public_earlier": 4,
+      "delta_p50": 0
+    }
+  },
+  "poh_by_city": [
+    {"city":"Beauharnois","pairs":73,"doublezero_earlier":71,"same":1,"public_earlier":1,"doublezero_route_rtt_us":87000},
+    {"city":"London","pairs":57,"doublezero_earlier":1,"same":56,"public_earlier":0,"doublezero_route_rtt_us":11300},
+    {"city":"Luxembourg","pairs":27,"doublezero_earlier":4,"same":23,"public_earlier":0,"doublezero_route_rtt_us":13000},
+    {"city":"Amsterdam","pairs":12,"doublezero_earlier":0,"same":11,"public_earlier":1,"doublezero_route_rtt_us":5920},
+    {"city":"Aubervilliers","pairs":11,"doublezero_earlier":0,"same":9,"public_earlier":2,"doublezero_route_rtt_us":18500},
+    {"city":"Singapore","pairs":11,"doublezero_earlier":10,"same":1,"public_earlier":0,"doublezero_route_rtt_us":145000},
+    {"city":"Sao Paulo","pairs":2,"doublezero_earlier":2,"same":0,"public_earlier":0,"doublezero_route_rtt_us":null},
+    {"city":"Tokyo","pairs":2,"doublezero_earlier":2,"same":0,"public_earlier":0,"doublezero_route_rtt_us":null},
+    {"city":"Hong Kong","pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"doublezero_route_rtt_us":null},
+    {"city":"Bloomfield","pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"doublezero_route_rtt_us":null},
+    {"city":"Los Angeles","pairs":1,"doublezero_earlier":1,"same":0,"public_earlier":0,"doublezero_route_rtt_us":null},
+    {"city":"Prague","pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"doublezero_route_rtt_us":null},
+    {"city":"Stockholm","pairs":1,"doublezero_earlier":0,"same":1,"public_earlier":0,"doublezero_route_rtt_us":null}
+  ],
+  "cost_lamports": 2460000,
+  "commits": {
+    "benchmark_report": "f9911180144800283aa3b210c83ed4106f242b8d",
+    "harness": "3ab07c3fbd0e5728442e31890db52e1e150ead22",
+    "relay": "996e187660133bf3d4c95b78f2283ff90b40df4e"
+  }
+}
