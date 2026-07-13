@@ -23,12 +23,20 @@
     "transaction_index_delta_p50": -2
   },
   "same_slot_placement": {
+    "processed_transaction_index": {
+      "pairs": 201,
+      "doublezero_earlier": 115,
+      "same": 0,
+      "public_earlier": 86,
+      "delta_percentiles": {"p0":-467,"p1":-303,"p5":-94,"p10":-42,"p25":-19,"p50":-2,"p75":1,"p90":3,"p95":4,"p99":20,"p100":36}
+    },
     "entry": {
       "pairs": 201,
       "doublezero_earlier": 113,
       "same": 4,
       "public_earlier": 84,
-      "delta_p50": -2
+      "delta_p50": -2,
+      "delta_percentiles": {"p0":-96,"p1":-71,"p5":-46,"p10":-38,"p25":-16,"p50":-2,"p75":1,"p90":2,"p95":3,"p99":6,"p100":35}
     },
     "preceding_poh_ticks": {
       "pairs": 200,
@@ -50,6 +58,30 @@
         {"delta":1,"pairs":3},
         {"delta":4,"pairs":1}
       ]
+    }
+  },
+  "first_observation_time_ms": {
+    "rpcedge_deshred": {
+      "both_observed_pairs": 204,
+      "doublezero_only": 34,
+      "public_only": 2,
+      "neither_observed": 6,
+      "doublezero_wins": 117,
+      "public_wins": 87,
+      "public_internet_percentiles": {"p50":449.778,"p75":537.113,"p90":714.321,"p95":898.275,"p99":1076.251},
+      "doublezero_percentiles": {"p50":446.072,"p75":523.292,"p90":709.109,"p95":886.559,"p99":1068.273},
+      "paired_delta_percentiles": {"p0":-73.436,"p1":-52.395,"p5":-35.524,"p10":-26.095,"p25":-0.235,"p50":-0.006,"p75":0.009,"p90":0.013,"p95":0.018,"p99":7.263,"p100":8279.120}
+    },
+    "rpcedge_processed": {
+      "both_observed_pairs": 204,
+      "doublezero_only": 34,
+      "public_only": 2,
+      "neither_observed": 6,
+      "doublezero_wins": 127,
+      "public_wins": 77,
+      "public_internet_percentiles": {"p50":456.018,"p75":538.227,"p90":714.711,"p95":900.829,"p99":1077.673},
+      "doublezero_percentiles": {"p50":454.260,"p75":523.556,"p90":709.973,"p95":887.280,"p99":1068.663},
+      "paired_delta_percentiles": {"p0":-73.941,"p1":-51.529,"p5":-35.320,"p10":-25.980,"p25":-1.505,"p50":-0.009,"p75":0.008,"p90":0.014,"p95":0.091,"p99":2.109,"p100":8278.886}
     }
   },
   "poh_by_city": [
