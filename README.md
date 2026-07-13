@@ -279,6 +279,18 @@ The output measures matched deshred/processed observation, landed-slot, and
 block-position outcomes. It does not measure packet-arrival time inside the
 leader TPU. Provider ACK remains a local acceptance diagnostic.
 
+Generate the complete DoubleZero-versus-public output after the run:
+
+```bash
+scripts/report-doublezero-public.sh artifacts/<test-id>
+```
+
+The script runs the standard report and paired comparison, then derives one
+additional same-slot placement report from the saved entry history. It writes
+`doublezero-public-report.md`, `poh-placement.json`, and `poh-placement.md`
+under the comparison directory. This reporting step does not change live
+collection or transaction submission.
+
 Leader-paced outputs add:
 
 - `leader-sends.ndjson`

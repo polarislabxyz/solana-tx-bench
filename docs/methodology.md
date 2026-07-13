@@ -343,6 +343,19 @@ Negative latency is a candidate win. One-sided and unobserved groups are
 reported separately from complete-pair wins. These are matched landing and
 stream-observation outcomes, not timestamps taken at the remote TPU socket.
 
+For the Frankfurt DoubleZero/public experiment, run
+`scripts/report-doublezero-public.sh artifacts/<test-id>` after collection.
+The script compares only processed pairs recorded in the same slot. It uses the
+existing `entry-placements.ndjson` join for entry order, then reads the saved
+entry history from index zero and counts zero-transaction entries preceding
+each transaction entry. In Solana, those empty entries are PoH ticks. A gap in
+the entry sequence excludes that pair from the tick result instead of producing
+an estimated value.
+
+The resulting tick count is block-production placement: it shows how many PoH
+ticks the leader recorded before the transaction's entry. It does not show when
+the transaction packet reached the leader's TPU.
+
 Rakurai and Raiku are intentionally not mapped to Jito or Harmonic by the
 software-client-aware strategy as a proved integration. Rakurai publishes its
 own transaction-inclusion and virtual-priority path, and Raiku appears as a
