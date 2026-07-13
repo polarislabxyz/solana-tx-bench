@@ -1,8 +1,8 @@
 # Methodology
 
-This benchmark is designed to compare transaction observation latency across
-Yellowstone processed and SubscribeDeshred sources, then enrich those
-observations with a saved `getLeaderSlots` snapshot when available.
+This benchmark is designed to compare transaction-sender routes and providers
+using one first-observation clock per signature, then enrich those observations
+with block position and a saved `getLeaderSlots` snapshot when available.
 
 ## Measurement Boundary
 
@@ -12,9 +12,10 @@ Primary public artifact boundary:
 signed transaction generated locally
   -> configured provider adapter
   -> observed by RPCEdge Yellowstone processed and SubscribeDeshred
-  -> optionally joined to Yellowstone entry placement
   -> matched by signature
-  -> source percentile and win-rate report
+  -> earliest receiver observation selected
+  -> optionally joined to Yellowstone entry placement
+  -> route/provider percentile and win-rate report
 ```
 
 Portable enrichment boundary:
@@ -28,6 +29,27 @@ signature + observed slot from public artifact
 The public tool should never require private ClickHouse or private validator
 metadata. `getLeaderSlots` is the portable enrichment API; the saved snapshot is
 part of the benchmark artifact.
+
+## One First-Observation Clock
+
+Transaction-sender reports answer which submission route produced the better
+landing outcome. For each signature, select the earliest matched observation
+across every configured receiver. That minimum timestamp is the only landing
+clock used in route/provider tables.
+
+Processed Yellowstone metadata still supplies canonical `slot_index` even when
+another receiver supplied the earliest timestamp. Raw artifacts may retain
+receiver-specific observations for debugging, but a transaction-sender report
+must not publish separate deshred and processed latency rows, absolute latency
+tables per receiver, or receiver-versus-receiver win rates.
+
+A deshred-versus-processed comparison is a different experiment: a stream-
+lifecycle benchmark. It must be explicitly designed and labeled as such rather
+than added to a transaction-sender report.
+
+For paired timing percentiles, use only complete pairs recorded in the same
+slot. Report different-slot pairs and one-sided observations under landing
+coverage instead of mixing them into the timing distribution.
 
 ## Entry Placement And PoH
 
@@ -408,10 +430,11 @@ validator client, or leader proximity should be computed from:
 - landed slot / slot index observations;
 - the saved `leader-slots-snapshot.json` response;
 
-That separation lets external users compare processed-vs-deshred observation
-behavior without Polaris-private ClickHouse access. Private RPCEdge reports can
-still join deeper internal telemetry such as route-attempt internals or customer
-dimensions, but the public report should be reproducible from local artifacts.
+That separation lets external users reproduce first-observed landing and block-
+position results without Polaris-private ClickHouse access. Receiver-specific
+events remain diagnostic inputs. Private RPCEdge reports can still join deeper
+internal telemetry such as route-attempt internals or customer dimensions, but
+the public report should be reproducible from local artifacts.
 
 Generate the standalone report with:
 
@@ -439,13 +462,11 @@ during one leader's window and finally land under a later leader; blaming only
 the landed leader hides whether the sender route missed the original leader or
 whether the transaction was forwarded/held until a later slot.
 
-Latency uses the first stream observation for the signature, normally
-SubscribeDeshred, because it is the fastest public signal this benchmark
-collects. Transaction block position uses Yellowstone processed gRPC metadata
-when available, because processed transaction updates carry the canonical
-`slot_index` while deshred observations generally do not. The report can
-therefore show `source=rpcedge_deshred` for the timing row and still show a
-processed `Tx index` for the same signature.
+Latency uses the earliest configured receiver observation for the signature.
+Transaction block position uses Yellowstone processed gRPC metadata when
+available, because processed transaction updates carry the canonical
+`slot_index`. A diagnostic tail row may identify which receiver supplied the
+minimum timestamp without turning receiver identity into a comparison metric.
 
 ## Landing-Performance Buckets
 
@@ -453,8 +474,8 @@ Beam-style provider benchmarks use the right broad dimensions for transaction
 landing comparisons. This project reports those dimensions as raw measurements
 first:
 
-- **Landing latency in milliseconds**: submit timestamp to deshred and
-  processed observation by signature.
+- **Landing latency in milliseconds**: submit timestamp to the earliest
+  configured receiver observation for each signature.
 - **Landing latency in slots**: observed landed slot minus sender-observed slot
   at submission.
 - **Transaction position within the block**: processed transaction

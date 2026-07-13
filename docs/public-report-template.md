@@ -5,25 +5,48 @@ Use this template for website-safe benchmark reports.
 ## Methodology
 
 - Tool: `solana-tx-bench`
-- Sources: RPCEdge Yellowstone processed Subscribe and RPCEdge SubscribeDeshred
+- Receivers: `<configured observation receivers>`
 - Matching key: transaction signature
-- Minimum matched sources: 2
+- Landing clock: earliest matched receiver observation per signature
 - Window: `<start>` to `<end>`
 - Region: `<region>`
 - Endpoint: `<redacted endpoint label>`
 
 ## Results
 
-For a single run, paste `report.md` or `observation-summary.md` here.
+For a single run, paste the reviewed first-observed landing and block-placement
+summary here.
 
-For route/provider comparisons, paste `comparison.md` here and link the
-published `index.html` report.
+For route/provider comparisons, collapse receiver-specific artifacts to the
+earliest observation per signature before calculating paired deltas. Use this
+public shape:
+
+```text
+Block placement
+| Measure | Pairs | Candidate earlier | Same | Baseline earlier | p10 | p25 | p50 | p75 | p90 | p95 |
+
+First-observed timing
+| Population | Pairs | Candidate first | Same | Baseline first | p10 | p25 | p50 | p75 | p90 | p95 |
+
+Landing coverage
+| Outcome | Groups |
+```
+
+Do not add receiver-specific timing rows, absolute per-route observation-time
+tables, or different-slot pairs to the timing percentiles.
+
+For geography, group by validator identity and saved city/coordinates. Do not
+use a coarse region classifier or create a fallback geography bucket when
+coordinates are available.
 
 ## Interpretation
 
 - Processed gRPC is final transaction metadata from the normal Yellowstone path.
 - SubscribeDeshred is pre-processed transaction visibility from the deshred path.
-- The report compares when each source first observed the same signatures.
+- The report selects whichever configured receiver observed each signature
+  first. It does not compare receivers with each other.
+- Processed metadata supplies canonical transaction index even when another
+  receiver supplied the first-observation timestamp.
 - ACK latency is not used for the headline result.
 - Comparison scores use landing latency, landed slots, block position,
   same-slot rate, and success ratio. Only compare runs with the same transaction

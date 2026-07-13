@@ -2,9 +2,9 @@
 
 Reusable Solana transaction observation benchmark.
 
-The tool generates small signed mainnet transactions, submits each transaction to
-one or more configured providers, and writes reproducible artifacts for
-Yellowstone processed and SubscribeDeshred observation analysis.
+The tool generates small signed mainnet transactions, submits each transaction
+to one or more configured providers, and writes reproducible landing and block-
+placement artifacts from configured Yellowstone receivers.
 
 It is intentionally provider-neutral. Add a provider by implementing a sender
 adapter, not by hard-coding a benchmark path.
@@ -20,14 +20,16 @@ Primary measurement:
 
 ```text
 signed transaction submitted
-  -> observed on Yellowstone processed gRPC
-  -> observed on Yellowstone deshred / SubscribeDeshred
+  -> observed on one or more configured receivers
   -> matched by signature
-  -> source win rate, missing rate, and percentile deltas
+  -> earliest receiver observation selected for that transaction
+  -> landing, missing-rate, and block-position comparison
 ```
 
 Provider ACK latency is retained only as a diagnostic side channel. It is not
-the benchmark result.
+the benchmark result. Receiver-specific timing is also diagnostic: transaction-
+sender reports use one landing clock, the earliest matched observation for each
+signature across all configured receivers.
 
 Leader geography, validator client, datacenter, route hints, and bad-leader
 context should come from the saved `getLeaderSlots` snapshot when building the
@@ -214,9 +216,10 @@ cargo run --release -- run-leader-paced \
 ```
 
 Use the same transaction shape and observation endpoints for smoke tests, but
-only paired/matched-policy artifacts are valid for comparing submit-to-deshred,
-submit-to-processed, landed slot delta, processed block `slot_index`, success
-ratio, and extra priority/tip cost. Provider ACK latency is diagnostic only.
+only paired/matched-policy artifacts are valid for comparing first-observed
+landing time, landed slot delta, processed block `slot_index`, success ratio,
+and extra priority/tip cost. Provider ACK and receiver-specific latency are
+diagnostic only.
 Retries, delayed resends, and duplicate spam are intentionally excluded from
 baseline route-policy comparisons; benchmark those as separate tail-mitigation
 strategies. To test same-signature resend behavior, keep
@@ -275,9 +278,10 @@ the comparison: arm 0 is baseline, arm 1 is candidate, and every reported delta
 is `candidate - baseline`. Put public Internet first and DoubleZero second so a
 negative latency delta means DoubleZero was observed sooner.
 
-The output measures matched deshred/processed observation, landed-slot, and
-block-position outcomes. It does not measure packet-arrival time inside the
-leader TPU. Provider ACK remains a local acceptance diagnostic.
+The output selects the earliest matched receiver observation for each signature
+and measures first-observed, landed-slot, and block-position outcomes. It does
+not measure packet-arrival time inside the leader TPU. Provider ACK and
+receiver-specific timing remain diagnostics.
 
 Generate the complete DoubleZero-versus-public output after the run:
 
@@ -394,8 +398,8 @@ cargo run --release -- report --artifact-dir artifacts/<test_id>
 ```
 
 Jupyter or Python notebooks can still be useful for custom charts, but they are
-not required for the standard public report. Keep provider ACK charts visually
-separate from processed/deshred observation charts.
+not required for the standard public report. Keep provider ACK and receiver-
+specific diagnostics out of the transaction-sender result tables.
 
 Published report archive:
 

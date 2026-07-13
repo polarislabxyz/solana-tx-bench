@@ -331,9 +331,9 @@ slowest first-observed landing events. Tail rows include:
 - route-tip generated lamports, route-tip landed lamports, and generated vs
   landed total spend.
 
-Use the processed slot index for block-position analysis even when deshred was
-the first observed source. Deshred is the latency clock; processed gRPC is the
-canonical transaction metadata clock.
+Use the processed slot index for block-position analysis regardless of which
+configured receiver was first. The earliest receiver observation is the
+landing clock; processed gRPC is the canonical transaction metadata clock.
 
 Cost fields are explicit:
 
@@ -407,7 +407,9 @@ For a two-arm artifact, `compare` adds `paired-rows.json` and
 `paired-rows.csv`. Each row is one comparison group and observation source,
 with both signatures, leader/path context, complete or one-sided status, both
 latencies, and `candidate - baseline` latency, landed-slot, and block-position
-deltas. Aggregate paired summaries are embedded in every comparison report.
+deltas. Receiver-specific rows are retained for diagnosis. Public transaction-
+sender reports must collapse them to the earliest observation per signature
+before calculating a single route/provider timing delta.
 
 The scoring model reports five buckets:
 

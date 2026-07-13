@@ -101,7 +101,7 @@
       <div class="metric"><strong>246</strong><span>matched leader-run pairs</span></div>
       <div class="metric"><strong>29</strong><span>eligible leader identities</span></div>
       <div class="metric"><strong>91 / 105 / 4</strong><span>DoubleZero earlier / same tick / public earlier</span></div>
-      <div class="metric"><strong>34 vs 2</strong><span>DoubleZero-only vs public-only processed observations</span></div>
+      <div class="metric"><strong>34 vs 2</strong><span>DoubleZero-only vs public-only observations</span></div>
     </div>
 
     <h2>What the PoH measure means</h2>
@@ -118,49 +118,28 @@
       compared, and a pair was excluded if its entry sequence was incomplete.
     </p>
 
-    <h2>PoH tick-delta percentiles</h2>
-    <p>
-      Tick delta is the DoubleZero transaction's preceding-tick count minus the
-      public transaction's count. A negative value favors DoubleZero; for
-      example, <code>-3</code> means the DoubleZero transaction was recorded
-      three PoH intervals earlier in the same slot.
-    </p>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Population</th><th>Pairs</th><th>Minimum</th><th>p10</th><th>p25</th><th>p50</th><th>p75</th><th>p90</th><th>p95</th><th>Maximum</th></tr></thead>
-        <tbody>
-          <tr><td>All tick-complete pairs: signed delta</td><td>200</td><td>-11</td><td>-4</td><td>-2</td><td>0</td><td>0</td><td>0</td><td>0</td><td>4</td></tr>
-          <tr><td>DoubleZero-earlier pairs: advantage magnitude</td><td>91</td><td>1</td><td>1</td><td>2</td><td>2</td><td>3</td><td>4</td><td>5</td><td>11</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p class="note">
-      The second row is conditional on DoubleZero winning and therefore must be
-      read together with the first row and the 105 same-interval outcomes.
-      Percentiles use the nearest observed rank.
-    </p>
-
-    <h2>Same-slot block-position percentiles</h2>
+    <h2>Block-placement percentiles</h2>
     <p>
       Processed transaction index (<code>slot_index</code>) is the transaction's
       exact position in canonical processed-block order. Entry index is its
-      containing entry's position. Each delta is DoubleZero minus public
-      Internet, so a negative value means DoubleZero appeared earlier in the
-      same produced block.
+      containing entry's position. PoH interval counts preceding tick entries.
+      Each delta is DoubleZero minus public Internet, so a negative value means
+      DoubleZero appeared earlier in the same produced block.
     </p>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Position measure</th><th>Pairs</th><th>DZ earlier / same / public earlier</th><th>Minimum</th><th>p10</th><th>p25</th><th>p50</th><th>p75</th><th>p90</th><th>p95</th><th>p99</th><th>Maximum</th></tr></thead>
+        <thead><tr><th>Measure</th><th>Pairs</th><th>DZ earlier</th><th>Same</th><th>Public earlier</th><th>p10</th><th>p25</th><th>p50</th><th>p75</th><th>p90</th><th>p95</th></tr></thead>
         <tbody>
-          <tr><td>Processed transaction index</td><td>201</td><td>115 / 0 / 86</td><td>-467</td><td>-42</td><td>-19</td><td>-2</td><td>1</td><td>3</td><td>4</td><td>20</td><td>36</td></tr>
-          <tr><td>Entry index</td><td>201</td><td>113 / 4 / 84</td><td>-96</td><td>-38</td><td>-16</td><td>-2</td><td>1</td><td>2</td><td>3</td><td>6</td><td>35</td></tr>
+          <tr><td>Transaction index</td><td>201</td><td>115</td><td>0</td><td>86</td><td>-42</td><td>-19</td><td>-2</td><td>1</td><td>3</td><td>4</td></tr>
+          <tr><td>Entry index</td><td>201</td><td>113</td><td>4</td><td>84</td><td>-38</td><td>-16</td><td>-2</td><td>1</td><td>2</td><td>3</td></tr>
+          <tr><td>PoH interval</td><td>200</td><td>91</td><td>105</td><td>4</td><td>-4</td><td>-2</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
         </tbody>
       </table>
     </div>
     <p class="note">
-      These comparisons include only pairs landed in the same slot. Transaction
-      and entry indexes are ordering measures, not elapsed time. Percentiles
-      select observed values without interpolation.
+      These comparisons include only same-slot pairs; the PoH row also requires
+      complete contiguous entry history. Position values are ordering measures,
+      not elapsed time. Percentiles select observed values without interpolation.
     </p>
 
     <h2>PoH placement by leader city</h2>
@@ -201,9 +180,10 @@
     <p>
       The observed pattern is consistent with that hypothesis: nearby European
       leaders were usually in the same PoH interval, while Beauharnois and
-      Singapore were usually earlier through DoubleZero. Processed observation
-      latency also favored DoubleZero by a median 6.683 ms in Beauharnois, while
-      the larger European city cohorts were effectively tied.
+      Singapore were usually earlier through DoubleZero. Same-slot first-
+      observation time also favored DoubleZero by a median 5.395 ms for the
+      Beauharnois validator, while the larger European cohorts were effectively
+      tied.
     </p>
     <div class="table-wrap">
       <table>
@@ -235,9 +215,8 @@
       Leader city, country, latitude, longitude, and datacenter key come from
       the historical <code>getLeaderSlots</code> snapshots captured during the
       benchmark. Distances are calculated from the saved coordinates to the
-      Frankfurt sender. The report does not use the API's coarse region field:
-      that taxonomy can classify a validator as <code>Unknown</code> even when
-      its exact city and coordinates are present.
+      Frankfurt sender. Geographic cohorts use validator identity and these
+      exact saved fields; the API's coarse region field is not used.
     </p>
 
     <h2>PoH placement by validator identity</h2>
@@ -250,89 +229,63 @@
     </p>
     <div class="table-wrap">
       <table class="identity-table">
-        <thead><tr><th>Validator identity</th><th>Location</th><th>Distance</th><th>Pairs</th><th>DZ earlier</th><th>Same</th><th>Public earlier</th><th>PoH delta p10 / p50 / p90</th><th>Processed time delta p50</th></tr></thead>
+        <thead><tr><th>Validator identity</th><th>Location</th><th>Distance</th><th>Pairs</th><th>DZ earlier</th><th>Same</th><th>Public earlier</th><th>PoH delta p10 / p50 / p90</th><th>First-observed delta p50</th></tr></thead>
         <tbody>
-          <tr><td><code class="identity" title="Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk">Fd7btgySsrju…</code></td><td>Beauharnois, CA</td><td>5,876 km</td><td>73</td><td>71</td><td>1</td><td>1</td><td>-4 / -3 / -1</td><td>-6.683 ms</td></tr>
-          <tr><td><code class="identity" title="9eGrDohdNTAo61DRHyfMuqKWXqYnA3i254Wiszxe8FoY">9eGrDohdNTAo…</code></td><td>London, GB</td><td>637 km</td><td>31</td><td>0</td><td>31</td><td>0</td><td>0 / 0 / 0</td><td>0.006 ms</td></tr>
-          <tr><td><code class="identity" title="5pPRHniefFjkiaArbGX3Y8NUysJmQ9tMZg3FrFGwHzSm">5pPRHniefFjk…</code></td><td>Luxembourg, LU</td><td>185 km</td><td>26</td><td>4</td><td>22</td><td>0</td><td>-1 / 0 / 0</td><td>0.005 ms</td></tr>
-          <tr><td><code class="identity" title="JD549HsbJHeEKKUrKgg4Fj2iyv2RGjsV7NTZjZUrHybB">JD549HsbJHeE…</code></td><td>London, GB</td><td>637 km</td><td>25</td><td>0</td><td>25</td><td>0</td><td>0 / 0 / 0</td><td>0.007 ms</td></tr>
-          <tr><td><code class="identity" title="CoG8d9Fp2TFJRkAmrPMiPsGhQWHzdTTVoegEp9svRgmJ">CoG8d9Fp2TFJ…</code></td><td>Singapore, SG</td><td>10,260 km</td><td>11</td><td>10</td><td>1</td><td>0</td><td>-2 / -1 / -1</td><td>-0.015 ms</td></tr>
-          <tr><td><code class="identity" title="ana2y2YvQ3ZPMwm6qhnN3nJoUSiT3qx5Pvetkq9xcfY">ana2y2YvQ3ZP…</code></td><td>Aubervilliers, FR</td><td>473 km</td><td>11</td><td>0</td><td>9</td><td>2</td><td>0 / 0 / 1</td><td>0.009 ms</td></tr>
-          <tr><td><code class="identity" title="7cVfgArCheMR6Cs4t6vz5rfnqd56vZq4ndaBrY5xkxXy">7cVfgArCheMR…</code></td><td>Amsterdam, NL</td><td>365 km</td><td>7</td><td>0</td><td>6</td><td>1</td><td>0 / 0 / 1</td><td>0.014 ms</td></tr>
-          <tr><td><code class="identity" title="HH5dA42XF1HxNk1TRpG6LuKfLViMYNdAz5iWrFM4hWFi">HH5dA42XF1Hx…</code></td><td>Amsterdam, NL</td><td>365 km</td><td>2</td><td>0</td><td>2</td><td>0</td><td>0 / 0 / 0</td><td>-0.004 ms</td></tr>
-          <tr><td><code class="identity" title="mds4GEuiSgQRqveGyktWpETBFCb4AS2wDnhqwLHcT6Z">mds4GEuiSgQR…</code></td><td>Tokyo, JP</td><td>9,332 km</td><td>2</td><td>2</td><td>0</td><td>0</td><td>-5 / -5 / -5</td><td>-20.278 ms</td></tr>
-          <tr><td><code class="identity" title="2dfgsiSaZ51QYPsECMYMG247PXxyKdwkV9wTHoQb8YEC">2dfgsiSaZ51Q…</code></td><td>Amsterdam, NL</td><td>365 km</td><td>1</td><td>0</td><td>1</td><td>0</td><td>0 / 0 / 0</td><td>-0.006 ms</td></tr>
-          <tr><td><code class="identity" title="2mMGsb5uy1Q4Dvezr8HK2E8SJoChcb2X7b61tJPaVHHd">2mMGsb5uy1Q4…</code></td><td>Stockholm, SE</td><td>1,187 km</td><td>1</td><td>0</td><td>1</td><td>0</td><td>0 / 0 / 0</td><td>-0.008 ms</td></tr>
-          <tr><td><code class="identity" title="ACvL73V4GNnxPVfZ7K89jCrYurLyzpEuE9qirjvh2Xmi">ACvL73V4GNnx…</code></td><td>Luxembourg, LU</td><td>185 km</td><td>1</td><td>0</td><td>1</td><td>0</td><td>0 / 0 / 0</td><td>0.011 ms</td></tr>
-          <tr><td><code class="identity" title="EBk678aQvc3cUkfGyoehfw21JQfJXjmWuBeopYc89RSV">EBk678aQvc3c…</code></td><td>Los Angeles, US</td><td>Unavailable</td><td>1</td><td>1</td><td>0</td><td>0</td><td>-1 / -1 / -1</td><td>-0.053 ms</td></tr>
-          <tr><td><code class="identity" title="ECZx4Dfyn2o55KTYbM9r3Dt4VZRcrdfdrst7sUbWgrdU">ECZx4Dfyn2o5…</code></td><td>Bloomfield, US</td><td>6,208 km</td><td>1</td><td>0</td><td>1</td><td>0</td><td>0 / 0 / 0</td><td>0.009 ms</td></tr>
-          <tr><td><code class="identity" title="H8fHToVcZPi5bupGZohGPX2SWs8NHzgFKQ31wi5n6oux">H8fHToVcZPi5…</code></td><td>London, EN</td><td>635 km</td><td>1</td><td>1</td><td>0</td><td>0</td><td>-2 / -2 / -2</td><td>-0.989 ms</td></tr>
+          <tr><td><code class="identity" title="Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk">Fd7btgySsrju…</code></td><td>Beauharnois, CA</td><td>5,876 km</td><td>73</td><td>71</td><td>1</td><td>1</td><td>-4 / -3 / -1</td><td>-5.395 ms</td></tr>
+          <tr><td><code class="identity" title="9eGrDohdNTAo61DRHyfMuqKWXqYnA3i254Wiszxe8FoY">9eGrDohdNTAo…</code></td><td>London, GB</td><td>637 km</td><td>31</td><td>0</td><td>31</td><td>0</td><td>0 / 0 / 0</td><td>0.009 ms</td></tr>
+          <tr><td><code class="identity" title="5pPRHniefFjkiaArbGX3Y8NUysJmQ9tMZg3FrFGwHzSm">5pPRHniefFjk…</code></td><td>Luxembourg, LU</td><td>185 km</td><td>26</td><td>4</td><td>22</td><td>0</td><td>-1 / 0 / 0</td><td>-0.005 ms</td></tr>
+          <tr><td><code class="identity" title="JD549HsbJHeEKKUrKgg4Fj2iyv2RGjsV7NTZjZUrHybB">JD549HsbJHeE…</code></td><td>London, GB</td><td>637 km</td><td>25</td><td>0</td><td>25</td><td>0</td><td>0 / 0 / 0</td><td>0.009 ms</td></tr>
+          <tr><td><code class="identity" title="CoG8d9Fp2TFJRkAmrPMiPsGhQWHzdTTVoegEp9svRgmJ">CoG8d9Fp2TFJ…</code></td><td>Singapore, SG</td><td>10,260 km</td><td>11</td><td>10</td><td>1</td><td>0</td><td>-2 / -1 / -1</td><td>-0.009 ms</td></tr>
+          <tr><td><code class="identity" title="ana2y2YvQ3ZPMwm6qhnN3nJoUSiT3qx5Pvetkq9xcfY">ana2y2YvQ3ZP…</code></td><td>Aubervilliers, FR</td><td>473 km</td><td>11</td><td>0</td><td>9</td><td>2</td><td>0 / 0 / 1</td><td>0.011 ms</td></tr>
+          <tr><td><code class="identity" title="7cVfgArCheMR6Cs4t6vz5rfnqd56vZq4ndaBrY5xkxXy">7cVfgArCheMR…</code></td><td>Amsterdam, NL</td><td>365 km</td><td>7</td><td>0</td><td>6</td><td>1</td><td>0 / 0 / 1</td><td>-0.009 ms</td></tr>
+          <tr><td><code class="identity" title="HH5dA42XF1HxNk1TRpG6LuKfLViMYNdAz5iWrFM4hWFi">HH5dA42XF1Hx…</code></td><td>Amsterdam, NL</td><td>365 km</td><td>2</td><td>0</td><td>2</td><td>0</td><td>0 / 0 / 0</td><td>-0.005 ms</td></tr>
+          <tr><td><code class="identity" title="mds4GEuiSgQRqveGyktWpETBFCb4AS2wDnhqwLHcT6Z">mds4GEuiSgQR…</code></td><td>Tokyo, JP</td><td>9,332 km</td><td>2</td><td>2</td><td>0</td><td>0</td><td>-5 / -5 / -5</td><td>-20.209 ms</td></tr>
+          <tr><td><code class="identity" title="2dfgsiSaZ51QYPsECMYMG247PXxyKdwkV9wTHoQb8YEC">2dfgsiSaZ51Q…</code></td><td>Amsterdam, NL</td><td>365 km</td><td>1</td><td>0</td><td>1</td><td>0</td><td>0 / 0 / 0</td><td>0.005 ms</td></tr>
+          <tr><td><code class="identity" title="2mMGsb5uy1Q4Dvezr8HK2E8SJoChcb2X7b61tJPaVHHd">2mMGsb5uy1Q4…</code></td><td>Stockholm, SE</td><td>1,187 km</td><td>1</td><td>0</td><td>1</td><td>0</td><td>0 / 0 / 0</td><td>-0.013 ms</td></tr>
+          <tr><td><code class="identity" title="ACvL73V4GNnxPVfZ7K89jCrYurLyzpEuE9qirjvh2Xmi">ACvL73V4GNnx…</code></td><td>Luxembourg, LU</td><td>185 km</td><td>1</td><td>0</td><td>1</td><td>0</td><td>0 / 0 / 0</td><td>-0.004 ms</td></tr>
+          <tr><td><code class="identity" title="EBk678aQvc3cUkfGyoehfw21JQfJXjmWuBeopYc89RSV">EBk678aQvc3c…</code></td><td>Los Angeles, US</td><td>Unavailable</td><td>1</td><td>1</td><td>0</td><td>0</td><td>-1 / -1 / -1</td><td>-0.009 ms</td></tr>
+          <tr><td><code class="identity" title="ECZx4Dfyn2o55KTYbM9r3Dt4VZRcrdfdrst7sUbWgrdU">ECZx4Dfyn2o5…</code></td><td>Bloomfield, US</td><td>6,208 km</td><td>1</td><td>0</td><td>1</td><td>0</td><td>0 / 0 / 0</td><td>0.011 ms</td></tr>
+          <tr><td><code class="identity" title="H8fHToVcZPi5bupGZohGPX2SWs8NHzgFKQ31wi5n6oux">H8fHToVcZPi5…</code></td><td>London, EN</td><td>635 km</td><td>1</td><td>1</td><td>0</td><td>0</td><td>-2 / -2 / -2</td><td>-0.011 ms</td></tr>
           <tr><td><code class="identity" title="HW4zorvt6xDwhU36RqjcWNwU8YMj9tiqnAafBKW4cqV">HW4zorvt6xDw…</code></td><td>Hong Kong, HK</td><td>9,163 km</td><td>1</td><td>0</td><td>1</td><td>0</td><td>0 / 0 / 0</td><td>0.005 ms</td></tr>
           <tr><td><code class="identity" title="RNXnAJV1DeBt6Lytjz4wYzvS3d6bhsfidS5Np4ovwZz">RNXnAJV1DeBt…</code></td><td>Prague, CZ</td><td>409 km</td><td>1</td><td>0</td><td>1</td><td>0</td><td>0 / 0 / 0</td><td>0.011 ms</td></tr>
-          <tr><td><code class="identity" title="SA1LFXr4os2P4VKGUyRv84uFfuUYgcQkFh2uA4SmRcr">SA1LFXr4os2P…</code></td><td>São Paulo, BR</td><td>9,829 km</td><td>1</td><td>1</td><td>0</td><td>0</td><td>-5 / -5 / -5</td><td>-26.819 ms</td></tr>
-          <tr><td><code class="identity" title="SSmBEooM7RkmyuXxuKgAhTvhQZ36Z3G2WsmLGJKoQLY">SSmBEooM7Rkm…</code></td><td>Amsterdam, NL</td><td>365 km</td><td>1</td><td>0</td><td>1</td><td>0</td><td>0 / 0 / 0</td><td>-0.010 ms</td></tr>
+          <tr><td><code class="identity" title="SA1LFXr4os2P4VKGUyRv84uFfuUYgcQkFh2uA4SmRcr">SA1LFXr4os2P…</code></td><td>São Paulo, BR</td><td>9,829 km</td><td>1</td><td>1</td><td>0</td><td>0</td><td>-5 / -5 / -5</td><td>-26.560 ms</td></tr>
+          <tr><td><code class="identity" title="SSmBEooM7RkmyuXxuKgAhTvhQZ36Z3G2WsmLGJKoQLY">SSmBEooM7Rkm…</code></td><td>Amsterdam, NL</td><td>365 km</td><td>1</td><td>0</td><td>1</td><td>0</td><td>0 / 0 / 0</td><td>0.013 ms</td></tr>
           <tr><td><code class="identity" title="kom1oNHyyt84XLGVfi5Jo1qkVkU5xG1sBxPG19rWknE">kom1oNHyyt84…</code></td><td>Amsterdam, NL</td><td>365 km</td><td>1</td><td>0</td><td>1</td><td>0</td><td>0 / 0 / 0</td><td>0.011 ms</td></tr>
-          <tr><td><code class="identity" title="mALL2W6DUgDDtcyurC9v5YTF2CMMeuRwPBkf6tEoG3y">mALL2W6DUgDD…</code></td><td>São Paulo, BR</td><td>9,829 km</td><td>1</td><td>1</td><td>0</td><td>0</td><td>-5 / -5 / -5</td><td>-18.096 ms</td></tr>
+          <tr><td><code class="identity" title="mALL2W6DUgDDtcyurC9v5YTF2CMMeuRwPBkf6tEoG3y">mALL2W6DUgDD…</code></td><td>São Paulo, BR</td><td>9,829 km</td><td>1</td><td>1</td><td>0</td><td>0</td><td>-5 / -5 / -5</td><td>-17.509 ms</td></tr>
         </tbody>
       </table>
     </div>
     <p class="note">
-      Negative PoH and processed deltas favor DoubleZero. Percentiles for
+      Negative PoH and first-observed deltas favor DoubleZero. Percentiles for
       one- and two-pair validators are descriptive only and carry very low
       confidence.
     </p>
 
-    <h2>First observation time</h2>
-    <p>
-      First observation time is measured from submission until the signature
-      first appeared in a Frankfurt RPCEdge stream. <code>rpcedge_deshred</code>
-      is the earliest deshredded block-data observation;
-      <code>rpcedge_processed</code> is the first processed-transaction
-      observation. These are not timestamps from the remote leader's TPU.
-    </p>
+    <h2>First-observed timing</h2>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Observation source</th><th>Complete pairs</th><th>Route</th><th>p50</th><th>p75</th><th>p90</th><th>p95</th><th>p99</th></tr></thead>
+        <thead><tr><th>Population</th><th>Pairs</th><th>DZ first</th><th>Same</th><th>Public first</th><th>p10</th><th>p25</th><th>p50</th><th>p75</th><th>p90</th><th>p95</th></tr></thead>
         <tbody>
-          <tr><td rowspan="2"><code>rpcedge_deshred</code></td><td rowspan="2">204</td><td>Public Internet</td><td>449.778 ms</td><td>537.113 ms</td><td>714.321 ms</td><td>898.275 ms</td><td>1,076.251 ms</td></tr>
-          <tr><td>DoubleZero</td><td>446.072 ms</td><td>523.292 ms</td><td>709.109 ms</td><td>886.559 ms</td><td>1,068.273 ms</td></tr>
-          <tr><td rowspan="2"><code>rpcedge_processed</code></td><td rowspan="2">204</td><td>Public Internet</td><td>456.018 ms</td><td>538.227 ms</td><td>714.711 ms</td><td>900.829 ms</td><td>1,077.673 ms</td></tr>
-          <tr><td>DoubleZero</td><td>454.260 ms</td><td>523.556 ms</td><td>709.973 ms</td><td>887.280 ms</td><td>1,068.663 ms</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p>
-      The more useful comparison is the matched delta below: DoubleZero time
-      minus public Internet time for the same leader run. Negative values favor
-      DoubleZero.
-    </p>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Observation source</th><th>DZ wins / public wins</th><th>Minimum</th><th>p1</th><th>p5</th><th>p10</th><th>p25</th><th>p50</th><th>p75</th><th>p90</th><th>p95</th><th>p99</th><th>Maximum</th></tr></thead>
-        <tbody>
-          <tr><td><code>rpcedge_deshred</code></td><td>117 / 87</td><td>-73.436 ms</td><td>-52.395 ms</td><td>-35.524 ms</td><td>-26.095 ms</td><td>-0.235 ms</td><td>-0.006 ms</td><td>0.009 ms</td><td>0.013 ms</td><td>0.018 ms</td><td>7.263 ms</td><td>8,279.120 ms</td></tr>
-          <tr><td><code>rpcedge_processed</code></td><td>127 / 77</td><td>-73.941 ms</td><td>-51.529 ms</td><td>-35.320 ms</td><td>-25.980 ms</td><td>-1.505 ms</td><td>-0.009 ms</td><td>0.008 ms</td><td>0.014 ms</td><td>0.091 ms</td><td>2.109 ms</td><td>8,278.886 ms</td></tr>
+          <tr><td>Same-slot complete pairs</td><td>201</td><td>115</td><td>0</td><td>86</td><td>-26.038 ms</td><td>-0.170 ms</td><td>-0.006 ms</td><td>0.009 ms</td><td>0.013 ms</td><td>0.018 ms</td></tr>
         </tbody>
       </table>
     </div>
     <p class="note">
-      Submit-to-observation time includes local relay scheduling, network
-      transit, leader admission and scheduling, block production, and
-      propagation back to the Frankfurt observer. It is not network RTT or TPU
-      packet-arrival latency. Paired subtraction shares the same sender clock
-      and observer but does not isolate those components. The percentiles retain
-      three complete pairs that landed in different slots, including the visible
-      8.28-second tail outcome. They exclude 34 DoubleZero-only, two public-only,
-      and six neither-observed groups rather than assigning artificial latency
-      values to censored outcomes.
+      Each transaction uses its earliest observation across the configured
+      Frankfurt receivers. Delta is DoubleZero minus public Internet; negative
+      favors DoubleZero. This measures Frankfurt observation order, not TPU
+      packet arrival. Different-slot and one-sided outcomes are reported below,
+      not mixed into these percentiles.
     </p>
 
     <h2>Landing and observation coverage</h2>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Processed outcome</th><th>Groups</th></tr></thead>
+        <thead><tr><th>Outcome</th><th>Groups</th></tr></thead>
         <tbody>
           <tr><td>Observed through both arms</td><td>204</td></tr>
+          <tr><td>Both observed in the same slot</td><td>201</td></tr>
+          <tr><td>Both observed in different slots</td><td>3</td></tr>
           <tr><td>Observed only through DoubleZero</td><td>34</td></tr>
           <tr><td>Observed only through public Internet</td><td>2</td></tr>
           <tr><td>Observed through neither arm</td><td>6</td></tr>
@@ -340,10 +293,9 @@
       </table>
     </div>
     <p>
-      Among the 204 complete processed pairs, DoubleZero was observed first 127
-      times and public Internet 77 times. The median paired delta was -0.009 ms,
-      which is effectively tied. The 34-to-2 one-sided outcome remains material
-      and is reported separately from complete-pair latency percentiles.
+      The three different-slot pairs remain landing outcomes but are not route-
+      timing samples. The 34-to-2 one-sided result is also reported separately
+      instead of assigning missing transactions artificial latency values.
     </p>
 
     <h2>Methodology</h2>
@@ -352,7 +304,7 @@
       <section><h3>Route isolation</h3><p>The DoubleZero arm used normal Frankfurt routing through <code>doublezero0</code>. A temporary dedicated UID forced the public arm through <code>bond0</code>. Both relays used the same immutable binary.</p></section>
       <section><h3>Eligible leaders</h3><p>Transactions were sent only when the saved leader snapshot reported <code>networkPath.class == "doublezero"</code> and <code>verified == true</code>. This is sender-specific TPU routing, not DoubleZero Edge shred publication.</p></section>
       <section><h3>Transaction shape</h3><p>Both arms used TPU QUIC only, one attempt, a 660 CU limit, zero priority fee, and no route tip. All 492 submissions were accepted.</p></section>
-      <section><h3>Observation clock</h3><p>Signatures were matched against RPCEdge deshred and processed streams in Frankfurt. First observation includes leader admission, block production, propagation, and local observation.</p></section>
+      <section><h3>Observation clock</h3><p>For each signature, the earliest event across the configured Frankfurt receivers is the single landing clock. Processed metadata separately supplies canonical transaction index.</p></section>
       <section><h3>PoH derivation</h3><p>Processed transaction indexes were joined after the run to the immutable contiguous Yellowstone entry sequence. The sending and collection path was unchanged.</p></section>
     </div>
 
