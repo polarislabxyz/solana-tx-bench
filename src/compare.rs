@@ -2,7 +2,7 @@ use crate::{
     artifacts::{BenchManifest, BenchSample},
     cost::priority_fee_lamports,
     leader_paced::{LeaderRunDecisionEvent, LeaderSendEvent},
-    observations::ObservationEvent,
+    observations::{EntryPlacementEvent, ObservationEvent},
 };
 use anyhow::{bail, Context, Result};
 use chrono::{DateTime, SecondsFormat, Utc};
@@ -71,6 +71,14 @@ pub struct PairedSourceSummary {
     pub delta_p90_ms: Option<f64>,
     pub landed_slot_delta_p50: Option<i64>,
     pub slot_index_delta_p50: Option<i64>,
+    pub entry_index_delta_p50: Option<i64>,
+    pub preceding_poh_ticks_delta_p50: Option<i64>,
+    pub candidate_entry_wins: usize,
+    pub entry_ties: usize,
+    pub baseline_entry_wins: usize,
+    pub candidate_tick_wins: usize,
+    pub tick_ties: usize,
+    pub baseline_tick_wins: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,6 +104,12 @@ pub struct PairedComparisonRow {
     pub baseline_slot_index: Option<u64>,
     pub candidate_slot_index: Option<u64>,
     pub slot_index_delta: Option<i64>,
+    pub baseline_entry_index: Option<u64>,
+    pub candidate_entry_index: Option<u64>,
+    pub entry_index_delta: Option<i64>,
+    pub baseline_preceding_poh_ticks: Option<u64>,
+    pub candidate_preceding_poh_ticks: Option<u64>,
+    pub preceding_poh_ticks_delta: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -240,6 +254,12 @@ fn build_paired_comparison(
         read_ndjson(&artifact_dir.join("matched-observations.ndjson"))?;
     let decisions: Vec<LeaderRunDecisionEvent> =
         read_ndjson(&artifact_dir.join("leader-runs.ndjson"))?;
+    let placements: Vec<EntryPlacementEvent> =
+        read_ndjson(&artifact_dir.join("entry-placements.ndjson"))?;
+    let placements_by_signature = placements
+        .iter()
+        .map(|placement| (placement.signature.as_str(), placement))
+        .collect::<BTreeMap<_, _>>();
 
     let arms_by_index = sends
         .iter()
@@ -313,6 +333,26 @@ fn build_paired_comparison(
             let candidate_landed_slot = candidate_observation.and_then(|event| event.slot);
             let baseline_slot_index = baseline_observation.and_then(|event| event.slot_index);
             let candidate_slot_index = candidate_observation.and_then(|event| event.slot_index);
+            let baseline_placement = (source_name == "rpcedge_processed")
+                .then(|| {
+                    placements_by_signature
+                        .get(baseline_send.signature.as_str())
+                        .copied()
+                })
+                .flatten();
+            let candidate_placement = (source_name == "rpcedge_processed")
+                .then(|| {
+                    placements_by_signature
+                        .get(candidate_send.signature.as_str())
+                        .copied()
+                })
+                .flatten();
+            let baseline_entry_index = baseline_placement.map(|placement| placement.entry_index);
+            let candidate_entry_index = candidate_placement.map(|placement| placement.entry_index);
+            let baseline_preceding_poh_ticks =
+                baseline_placement.and_then(|placement| placement.preceding_poh_ticks);
+            let candidate_preceding_poh_ticks =
+                candidate_placement.and_then(|placement| placement.preceding_poh_ticks);
             let status = match (
                 baseline_observation.is_some(),
                 candidate_observation.is_some(),
@@ -349,6 +389,16 @@ fn build_paired_comparison(
                 candidate_slot_index,
                 slot_index_delta: baseline_slot_index
                     .zip(candidate_slot_index)
+                    .map(|(baseline, candidate)| candidate as i64 - baseline as i64),
+                baseline_entry_index,
+                candidate_entry_index,
+                entry_index_delta: baseline_entry_index
+                    .zip(candidate_entry_index)
+                    .map(|(baseline, candidate)| candidate as i64 - baseline as i64),
+                baseline_preceding_poh_ticks,
+                candidate_preceding_poh_ticks,
+                preceding_poh_ticks_delta: baseline_preceding_poh_ticks
+                    .zip(candidate_preceding_poh_ticks)
                     .map(|(baseline, candidate)| candidate as i64 - baseline as i64),
             });
         }
@@ -390,9 +440,19 @@ fn summarize_paired_source(source_name: &str, rows: &[PairedComparisonRow]) -> P
         .iter()
         .filter_map(|row| row.slot_index_delta)
         .collect::<Vec<_>>();
+    let mut entry_index_deltas = rows
+        .iter()
+        .filter_map(|row| row.entry_index_delta)
+        .collect::<Vec<_>>();
+    let mut poh_tick_deltas = rows
+        .iter()
+        .filter_map(|row| row.preceding_poh_ticks_delta)
+        .collect::<Vec<_>>();
     deltas.sort_by(f64::total_cmp);
     landed_slot_deltas.sort_unstable();
     slot_index_deltas.sort_unstable();
+    entry_index_deltas.sort_unstable();
+    poh_tick_deltas.sort_unstable();
     PairedSourceSummary {
         source_name: source_name.to_string(),
         comparison_groups: rows.len(),
@@ -420,6 +480,23 @@ fn summarize_paired_source(source_name: &str, rows: &[PairedComparisonRow]) -> P
         delta_p90_ms: percentile_f64(&deltas, 0.90),
         landed_slot_delta_p50: percentile_i64_value(&landed_slot_deltas, 0.50),
         slot_index_delta_p50: percentile_i64_value(&slot_index_deltas, 0.50),
+        entry_index_delta_p50: percentile_i64_value(&entry_index_deltas, 0.50),
+        preceding_poh_ticks_delta_p50: percentile_i64_value(&poh_tick_deltas, 0.50),
+        candidate_entry_wins: entry_index_deltas
+            .iter()
+            .filter(|delta| **delta < 0)
+            .count(),
+        entry_ties: entry_index_deltas
+            .iter()
+            .filter(|delta| **delta == 0)
+            .count(),
+        baseline_entry_wins: entry_index_deltas
+            .iter()
+            .filter(|delta| **delta > 0)
+            .count(),
+        candidate_tick_wins: poh_tick_deltas.iter().filter(|delta| **delta < 0).count(),
+        tick_ties: poh_tick_deltas.iter().filter(|delta| **delta == 0).count(),
+        baseline_tick_wins: poh_tick_deltas.iter().filter(|delta| **delta > 0).count(),
     }
 }
 
@@ -462,7 +539,7 @@ fn write_paired_rows(output_dir: &Path, rows: &[PairedComparisonRow]) -> Result<
         serde_json::to_vec_pretty(rows)?,
     )
     .with_context(|| format!("write {}", output_dir.join("paired-rows.json").display()))?;
-    let mut csv = String::from("source_name,comparison_group_id,leader_identity,leader_region,leader_city,leader_network_path_class,leader_network_path_rtt_us,baseline_arm,candidate_arm,baseline_signature,candidate_signature,status,baseline_latency_ms,candidate_latency_ms,delta_ms,baseline_landed_slot,candidate_landed_slot,landed_slot_delta,baseline_slot_index,candidate_slot_index,slot_index_delta\n");
+    let mut csv = String::from("source_name,comparison_group_id,leader_identity,leader_region,leader_city,leader_network_path_class,leader_network_path_rtt_us,baseline_arm,candidate_arm,baseline_signature,candidate_signature,status,baseline_latency_ms,candidate_latency_ms,delta_ms,baseline_landed_slot,candidate_landed_slot,landed_slot_delta,baseline_slot_index,candidate_slot_index,slot_index_delta,baseline_entry_index,candidate_entry_index,entry_index_delta,baseline_preceding_poh_ticks,candidate_preceding_poh_ticks,preceding_poh_ticks_delta\n");
     for row in rows {
         let fields = [
             row.source_name.clone(),
@@ -504,6 +581,24 @@ fn write_paired_rows(output_dir: &Path, rows: &[PairedComparisonRow]) -> Result<
                 .map(|value| value.to_string())
                 .unwrap_or_default(),
             row.slot_index_delta
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.baseline_entry_index
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.candidate_entry_index
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.entry_index_delta
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.baseline_preceding_poh_ticks
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.candidate_preceding_poh_ticks
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            row.preceding_poh_ticks_delta
                 .map(|value| value.to_string())
                 .unwrap_or_default(),
         ];
@@ -1324,6 +1419,23 @@ fn comparison_markdown(output: &ComparisonOutput) -> String {
                 fmt_i64(source.slot_index_delta_p50),
             ));
         }
+        if let Some(processed) = paired
+            .sources
+            .iter()
+            .find(|source| source.source_name == "rpcedge_processed")
+        {
+            out.push_str(&format!(
+                "\nProcessed placement: entry order candidate/baseline/tie = `{}/{}/{}` (delta p50 `{}`); preceding-PoH-tick order candidate/baseline/tie = `{}/{}/{}` (delta p50 `{}`). Tick ordinal is derived only from a complete entry prefix and describes block-production placement, not TPU arrival.\n",
+                processed.candidate_entry_wins,
+                processed.baseline_entry_wins,
+                processed.entry_ties,
+                fmt_i64(processed.entry_index_delta_p50),
+                processed.candidate_tick_wins,
+                processed.baseline_tick_wins,
+                processed.tick_ties,
+                fmt_i64(processed.preceding_poh_ticks_delta_p50),
+            ));
+        }
         out.push_str("\nPer-leader matched rows: `paired-rows.json` and `paired-rows.csv`.\n");
     }
     out.push_str("\n\n## Comparison\n\n");
@@ -1499,7 +1611,25 @@ code{background:#eef2f4;padding:1px 5px;border-radius:4px}.pill{display:inline-f
                 fmt_i64(source.slot_index_delta_p50),
             ));
         }
-        out.push_str("</tbody></table></div><div class=\"links\"><a class=\"pill\" href=\"paired-rows.json\">Per-leader JSON</a><a class=\"pill\" href=\"paired-rows.csv\">Per-leader CSV</a></div></section>");
+        out.push_str("</tbody></table></div>");
+        if let Some(processed) = paired
+            .sources
+            .iter()
+            .find(|source| source.source_name == "rpcedge_processed")
+        {
+            out.push_str(&format!(
+                "<div class=\"note\">Processed placement: entry order candidate/baseline/tie = <b>{}/{}/{}</b> (delta p50 <b>{}</b>); preceding-PoH-tick order candidate/baseline/tie = <b>{}/{}/{}</b> (delta p50 <b>{}</b>). Tick ordinal is derived only from a complete entry prefix and describes block-production placement, not TPU arrival.</div>",
+                processed.candidate_entry_wins,
+                processed.baseline_entry_wins,
+                processed.entry_ties,
+                fmt_i64(processed.entry_index_delta_p50),
+                processed.candidate_tick_wins,
+                processed.baseline_tick_wins,
+                processed.tick_ties,
+                fmt_i64(processed.preceding_poh_ticks_delta_p50),
+            ));
+        }
+        out.push_str("<div class=\"links\"><a class=\"pill\" href=\"paired-rows.json\">Per-leader JSON</a><a class=\"pill\" href=\"paired-rows.csv\">Per-leader CSV</a></div></section>");
     }
 
     out.push_str("<section class=\"section\"><h2>Comparison</h2><div class=\"table-wrap\"><table><thead><tr><th>Run</th><th>Routes</th><th>Avg First-Observed ms</th><th>P90 First-Observed ms</th><th>Avg Landed slots</th><th>P90 Landed slots</th><th>Avg Idx</th><th>P90 Idx</th><th>Avg Base Fee</th><th>Avg Priority Fee</th><th>Avg Tx Fee</th><th>Avg Route Tip Generated</th><th>Avg Route Tip Landed</th><th>Avg Total Generated</th><th>Avg Total Landed</th><th>Max Slots</th><th>Min Slots</th><th>Same-slot</th><th>Landed</th><th>Block seen</th><th>Total</th><th>Success %</th><th>Score %</th></tr></thead><tbody>");
@@ -1599,6 +1729,12 @@ mod tests {
             baseline_slot_index: None,
             candidate_slot_index: None,
             slot_index_delta: None,
+            baseline_entry_index: None,
+            candidate_entry_index: None,
+            entry_index_delta: None,
+            baseline_preceding_poh_ticks: None,
+            candidate_preceding_poh_ticks: None,
+            preceding_poh_ticks_delta: None,
         }
     }
 
@@ -1697,6 +1833,10 @@ mod tests {
         assert_eq!(processed.candidate_wins, 1);
         assert_eq!(processed.baseline_wins, 0);
         assert_eq!(processed.delta_p50_ms, Some(-200.0));
+        assert_eq!(processed.entry_index_delta_p50, Some(-80));
+        assert_eq!(processed.preceding_poh_ticks_delta_p50, Some(-25));
+        assert_eq!(processed.candidate_entry_wins, 1);
+        assert_eq!(processed.candidate_tick_wins, 1);
         let deshred = paired
             .sources
             .iter()
@@ -1800,6 +1940,14 @@ mod tests {
             "{\"schema_version\":1,\"test_id\":\"paired\",\"leader_identity\":\"leader\",\"leader_run_start_slot\":100,\"leader_run_end_slot\":103,\"observed_slot\":100,\"observed_at\":\"2026-01-01T00:00:00Z\",\"eligible\":true,\"network_path_class\":\"doublezero\",\"network_path_verified\":true}\n",
         )
         .expect("leader runs");
+        fs::write(
+            path.join("entry-placements.ndjson"),
+            concat!(
+                "{\"schema_version\":1,\"test_id\":\"paired\",\"signature\":\"sig-tpu\",\"source_name\":\"rpcedge_entry\",\"source_kind\":\"yellowstone_entry\",\"observed_at\":\"2026-01-01T00:00:00.300Z\",\"slot\":101,\"slot_index\":90,\"entry_index\":90,\"preceding_poh_ticks\":30,\"tx_index_in_entry\":0,\"entry_num_hashes\":1,\"entry_hash\":\"hash-tpu\",\"entry_executed_transaction_count\":1,\"entry_starting_transaction_index\":90}\n",
+                "{\"schema_version\":1,\"test_id\":\"paired\",\"signature\":\"sig-race\",\"source_name\":\"rpcedge_entry\",\"source_kind\":\"yellowstone_entry\",\"observed_at\":\"2026-01-01T00:00:00.100Z\",\"slot\":100,\"slot_index\":10,\"entry_index\":10,\"preceding_poh_ticks\":5,\"tx_index_in_entry\":0,\"entry_num_hashes\":1,\"entry_hash\":\"hash-race\",\"entry_executed_transaction_count\":1,\"entry_starting_transaction_index\":10}\n"
+            ),
+        )
+        .expect("entry placements");
     }
 
     fn write_resend_run(path: &Path) {

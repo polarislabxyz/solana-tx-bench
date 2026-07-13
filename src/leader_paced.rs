@@ -1511,7 +1511,7 @@ fn write_entry_placements(
         entries_by_slot.entry(entry.slot).or_default().push(entry);
     }
     for entries in entries_by_slot.values_mut() {
-        entries.sort_by_key(|entry| (entry.starting_transaction_index, entry.entry_index));
+        entries.sort_by_key(|entry| entry.entry_index);
     }
 
     let mut placements = Vec::new();
@@ -1525,6 +1525,9 @@ fn write_entry_placements(
         else {
             continue;
         };
+        let preceding_poh_ticks = entries_by_slot
+            .get(&slot)
+            .and_then(|entries| preceding_poh_ticks(entries, entry.entry_index));
         placements.push(EntryPlacementEvent {
             schema_version: 1,
             test_id: test_id.to_string(),
@@ -1537,6 +1540,7 @@ fn write_entry_placements(
             slot,
             slot_index,
             entry_index: entry.entry_index,
+            preceding_poh_ticks,
             tx_index_in_entry: slot_index.saturating_sub(entry.starting_transaction_index),
             entry_num_hashes: entry.num_hashes,
             entry_hash: entry.entry_hash.clone(),
@@ -1558,6 +1562,27 @@ fn write_entry_placements(
     }
     writer.flush().context("flush entry placements")?;
     Ok(placements)
+}
+
+fn preceding_poh_ticks(entries: &[EntryEvent], target_entry_index: u64) -> Option<u64> {
+    let mut expected_index = 0_u64;
+    let mut tick_count = 0_u64;
+    for entry in entries {
+        if entry.entry_index < expected_index {
+            continue;
+        }
+        if entry.entry_index != expected_index {
+            return None;
+        }
+        if entry.entry_index == target_entry_index {
+            return Some(tick_count);
+        }
+        if entry.executed_transaction_count == 0 {
+            tick_count = tick_count.saturating_add(1);
+        }
+        expected_index = expected_index.saturating_add(1);
+    }
+    None
 }
 
 fn read_entry_events(path: &std::path::Path) -> Result<Vec<EntryEvent>> {
@@ -1621,6 +1646,37 @@ fn redact_url(url: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn entry(entry_index: u64, executed_transaction_count: u64) -> EntryEvent {
+        EntryEvent {
+            schema_version: 1,
+            test_id: "test".to_string(),
+            source_name: "rpcedge_entry".to_string(),
+            source_kind: ObservationSourceKind::YellowstoneEntry,
+            observed_at: Utc::now(),
+            slot: 1,
+            entry_index,
+            num_hashes: 1,
+            entry_hash: format!("hash-{entry_index}"),
+            executed_transaction_count,
+            starting_transaction_index: 0,
+        }
+    }
+
+    #[test]
+    fn poh_tick_derivation_counts_empty_entries_before_transaction_entry() {
+        let entries = vec![entry(0, 0), entry(1, 2), entry(2, 0), entry(3, 1)];
+
+        assert_eq!(preceding_poh_ticks(&entries, 1), Some(1));
+        assert_eq!(preceding_poh_ticks(&entries, 3), Some(2));
+    }
+
+    #[test]
+    fn poh_tick_derivation_rejects_incomplete_entry_prefix() {
+        let entries = vec![entry(0, 0), entry(2, 1)];
+
+        assert_eq!(preceding_poh_ticks(&entries, 2), None);
+    }
     use crate::{
         adapters::{ProviderConfig, RouteMode},
         config::ProviderSpec,

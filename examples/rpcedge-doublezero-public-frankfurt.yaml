@@ -30,5 +30,7 @@ lamports: 500
 compute_unit_limit: 660
 compute_unit_price_microlamports: 0
 memo_prefix: doublezero-public-frankfurt
-max_spend_lamports: 2000000
+# Bounds a one-hour run at the observed DoubleZero leader density while leaving
+# headroom for schedule variance. Both payer balances are checked before launch.
+max_spend_lamports: 5000000
 timeout_ms: 2000
