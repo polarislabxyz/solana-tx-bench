@@ -1,0 +1,35 @@
+test_id: null
+paired_payer_keypair_paths:
+  - /home/sol/solana-tx-bench/secrets/bench-keypair.json
+  - /home/sol/solana-tx-bench/secrets/bench-keypair-paired.json
+rpc_url: http://127.0.0.1:8899
+artifact_dir: /home/sol/solana-tx-bench/artifacts
+providers:
+  # Arm 0 is the baseline. Both arms target the same gateway route policy.
+  - name: route_aware_http
+    kind: rpcedge_route_aware_http
+    endpoint: http://127.0.0.1:9095/v1/submit
+    api_key_env: RPCEDGE_API_KEY
+    route_mode: only
+    routes:
+      - tpu_quic
+  # Arm 1 is the candidate. Keep route_results false so both arms measure the
+  # same fast gateway-admission ACK rather than different response contracts.
+  - name: framed_quic
+    kind: rpcedge_quic_raw_tx
+    endpoint: 127.0.0.1:4433
+    api_key_env: RPCEDGE_API_KEY
+    route_mode: only
+    routes:
+      - tpu_quic
+    route_results: false
+    server_name: relay.rpcedge.com
+count: 1
+duration_seconds: null
+rate_per_second: null
+lamports: 500
+compute_unit_limit: 660
+compute_unit_price_microlamports: 0
+memo_prefix: rpcedge-http-quic-frankfurt
+max_spend_lamports: 5000000
+timeout_ms: 2000

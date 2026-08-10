@@ -377,6 +377,15 @@ zero-transaction entries preceding each transaction entry. In Solana, those
 empty entries are PoH ticks. A gap in the entry sequence excludes that pair
 from the tick result instead of producing an estimated value.
 
+For same-gateway HTTP versus QUIC isolation, use
+`examples/rpcedge-http-quic-frankfurt.yaml` with
+`--route-strategy paired_providers`. Both arms use `only: [tpu_quic]` and the
+fast gateway-admission response. Do not enable `route_results` on only one arm:
+that would compare different ACK contracts. The two independent payer
+transactions are shape-equivalent but deliberately have different signatures;
+this experiment measures transport latency, not gateway duplicate suppression.
+Run it only under the normal funded-benchmark authorization and spend cap.
+
 The public `index.html` and machine-readable `summary.json` use the same typed
 summary. Overall, city, distance, and validator tables report the same four
 measures with candidate/same/baseline counts and delta p50/p95/p99. Small

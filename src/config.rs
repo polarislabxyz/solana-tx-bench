@@ -63,6 +63,28 @@ mod tests {
             .iter()
             .all(|provider| provider.config.supports_route_selection()));
     }
+
+    #[test]
+    fn frankfurt_http_quic_example_keeps_transport_arms_equivalent() {
+        let config: BenchConfig =
+            serde_yaml::from_str(include_str!("../examples/rpcedge-http-quic-frankfurt.yaml"))
+                .expect("parse HTTP/QUIC example");
+
+        assert_eq!(config.providers.len(), 2);
+        assert_eq!(config.paired_payer_keypair_paths.len(), 2);
+        assert_eq!(
+            config.providers[0].config.configured_routes(),
+            config.providers[1].config.configured_routes()
+        );
+        assert_eq!(
+            config.providers[0].config.configured_route_mode(),
+            config.providers[1].config.configured_route_mode()
+        );
+        assert!(config
+            .providers
+            .iter()
+            .all(|provider| provider.config.supports_route_selection()));
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
